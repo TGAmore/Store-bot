@@ -13,8 +13,8 @@ import time
 
 API_TOKEN = '7652837258:AAFsCZKdyfobBMz4KP1KGD6J3uUotHm-u7s'
 bot = telebot.TeleBot(API_TOKEN)
+app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 ADMIN_ID = 5584938116
 def get_connection():
     conn = sqlite3.connect(db_path, check_same_thread=False)
@@ -54,29 +54,19 @@ CREATE TABLE IF NOT EXISTS banned_users (
 )
 ''')
 conn.commit()
-cursor.execute('''CREATE TABLE IF NOT EXISTS offers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    details TEXT NOT NULL,
-    price REAL NOT NULL,
-    quantity INTEGER NOT NULL,
-    image TEXT
-)''')
-conn.commit()
-print("تمت إعادة إنشاء جدول offers.")
-cursor.execute('DROP TABLE IF EXISTS offers')
-conn.commit()
-cursor.execute('''
-CREATE TABLE offers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    details TEXT NOT NULL,
-    price REAL NOT NULL,
-    quantity INTEGER NOT NULL,
-    image TEXT
-)
-''')
-conn.commit()
+def init_db():
+    conn, cur = get_connection()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS offers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            details TEXT,
+            price REAL,
+            quantity INTEGER
+        )
+    ''')
+    conn.commit()
+
 cursor.execute('''
         CREATE TABLE IF NOT EXISTS recharge_requests (
             request_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -891,20 +881,16 @@ def get_banned_users(message):
         bot.send_message(message.chat.id, f"قائمة المستخدمين المحظورين:\n{banned_users_list}" )
     else:
         bot.send_message(message.chat.id, "لا يوجد مستخدمين محظورين حتى الآن." )
-app = Flask(__name__)
-
+        
 @app.route('/')
 def home():
-    return "Bot is running!"
+    return "بوت شغال!"
 
 def run_flask():
-    app.run(host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=5000)
 
-# شغل Flask في Thread منفصل
-flask_thread = threading.Thread(target=run_flask)
+flask_thread = threading.Thread(target=run_flask, daemon=True)
 flask_thread.start()
 
-# شغل البوت polling
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-bot.infinity_polling(timeout=20, long_polling_timeout=60)
+# ------------------- تشغيل البوت -------------------
+bot.infinity_polling()
