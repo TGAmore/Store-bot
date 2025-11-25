@@ -1,3 +1,5 @@
+from flask import Flask
+import threading
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -889,8 +891,20 @@ def get_banned_users(message):
         bot.send_message(message.chat.id, f"قائمة المستخدمين المحظورين:\n{banned_users_list}" )
     else:
         bot.send_message(message.chat.id, "لا يوجد مستخدمين محظورين حتى الآن." )
-        logging.basicConfig(level=logging.DEBUG)
-        logger = logging.getLogger(__name__)
-if __name__ == '__main__':
-        bot.polling(none_stop=True, interval=0, timeout=20, long_polling_timeout=60)
-        time.sleep(15)
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    app.run(host="0.0.0.0", port=8080)
+
+# شغل Flask في Thread منفصل
+flask_thread = threading.Thread(target=run_flask)
+flask_thread.start()
+
+# شغل البوت polling
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+bot.infinity_polling(timeout=20, long_polling_timeout=60)
