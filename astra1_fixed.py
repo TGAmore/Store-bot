@@ -66,7 +66,7 @@ def init_db():
         )
     ''')
     conn.commit()
-
+init_db()
 cursor.execute('''
         CREATE TABLE IF NOT EXISTS recharge_requests (
             request_id INTEGER PRIMARY KEY AUTOINCREMENT,
