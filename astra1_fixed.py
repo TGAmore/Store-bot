@@ -1,82 +1,96 @@
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import sqlite3
+import psycopg2
 import logging
 import os
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-db_path = os.path.join(BASE_DIR, 'user_data.db')
-conn = sqlite3.connect(db_path, check_same_thread=False)
 import time
 
 API_TOKEN = '7652837258:AAFsCZKdyfobBMz4KP1KGD6J3uUotHm-u7s'
 bot = telebot.TeleBot(API_TOKEN)
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(name)
 ADMIN_ID = 5584938116
+
+بيانات الاتصال بـ Supabase
+
+DB_CONFIG = {
+"host": "db.rjhtgcorsuxvctablycl.supabase.co",
+"port": 5432,
+"database": "postgres",
+"user": "postgres",
+"password": "هنا_ضع_كلمة_المرور_الخاصة_بك"
+}
+
 def get_connection():
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    return conn, conn.cursor()
+conn = psycopg2.connect(**DB_CONFIG)
+return conn, conn.cursor()
 
 def record_transaction(user_id, offer_id, amount):
-    """سجل المعاملة في جدول transactions (ينشئ الجدول إذا لم يكن موجودًا)."""
-    conn, cur = get_connection()
-    try:
-        cur.execute('''CREATE TABLE IF NOT EXISTS transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            offer_id INTEGER,
-            amount REAL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )''')
-        cur.execute('INSERT INTO transactions (user_id, offer_id, amount) VALUES (?, ?, ?)',
-                    (user_id, offer_id, amount))
-        conn.commit()
-    except Exception as e:
-        logging.getLogger(__name__).error(f"Error recording transaction: {e}")
-    finally:
-        conn.close()
-conn = sqlite3.connect('user_data.db', check_same_thread=False)
-cursor = conn.cursor()
-cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            balance REAL DEFAULT 0
-        )
-        ''')
+"""سجل المعاملة في جدول transactions (ينشئ الجدول إذا لم يكن موجودًا)."""
+conn, cur = get_connection()
+try:
+cur.execute('''CREATE TABLE IF NOT EXISTS transactions (
+id SERIAL PRIMARY KEY,
+user_id BIGINT,
+offer_id BIGINT,
+amount NUMERIC,
+timestamp TIMESTAMPTZ DEFAULT NOW()
+)''')
+cur.execute(
+'INSERT INTO transactions (user_id, offer_id, amount) VALUES (%s, %s, %s)',
+(user_id, offer_id, amount)
+)
 conn.commit()
-cursor.execute('''
+except Exception as e:
+logger.error(f"Error recording transaction: {e}")
+finally:
+conn.close()
+
+def init_tables():
+conn, cur = get_connection()
+try:
+cur.execute('''
+CREATE TABLE IF NOT EXISTS users (
+user_id BIGINT PRIMARY KEY,
+username TEXT,
+balance NUMERIC DEFAULT 0
+)
+''')
+cur.execute('''
 CREATE TABLE IF NOT EXISTS banned_users (
-    user_id INTEGER PRIMARY KEY
+user_id BIGINT PRIMARY KEY
+)
+''')
+cur.execute('''
+CREATE TABLE IF NOT EXISTS offers (
+id SERIAL PRIMARY KEY,
+name TEXT NOT NULL,
+details TEXT NOT NULL,
+price NUMERIC NOT NULL,
+quantity INTEGER NOT NULL,
+image TEXT,
+category TEXT
+)
+''')
+cur.execute('''
+CREATE TABLE IF NOT EXISTS recharge_requests (
+request_id SERIAL PRIMARY KEY,
+user_id BIGINT,
+deposit_amount NUMERIC,
+transaction_id TEXT,
+status TEXT DEFAULT 'Pending'
 )
 ''')
 conn.commit()
-cursor.execute('''CREATE TABLE IF NOT EXISTS offers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    details TEXT NOT NULL,
-    price REAL NOT NULL,
-    quantity INTEGER NOT NULL,
-    image TEXT
-)''')
-conn.commit()
-cursor.execute('''
-        CREATE TABLE IF NOT EXISTS recharge_requests (
-            request_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            deposit_amount REAL,
-            transaction_id TEXT,
-            status TEXT DEFAULT 'Pending'
-        )
-        ''')
-conn.commit()
-try:
-    cursor.execute("ALTER TABLE offers ADD COLUMN category TEXT;")
-    conn.commit()
-except sqlite3.OperationalError as e:
-    if "duplicate column name" in str(e):
-        pass  # العمود موجود مسبقًا
+except Exception as e:
+logger.error(f"Error initializing tables: {e}")
+finally:
+conn.close()
+
+استدعاء تهيئة الجداول عند بدء التشغيل
+
+init_tables()
     else:
         raise
 
