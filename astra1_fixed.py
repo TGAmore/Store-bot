@@ -13,6 +13,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SUPABASE_URL = "https://rjhtgcorsuxvctablycl.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqaHRnY29yc3V4dmN0YWJseWNsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDE1MjU4OSwiZXhwIjoyMDc5NzI4NTg5fQ.os0P5e6Tfr5eri_CCs5xt39P_tYTRhoQxwG_Z2nyLCU"
 
+# create client (assumes compatible supabase python lib is installed)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 API_TOKEN = '7652837258:AAFsCZKdyfobBMz4KP1KGD6J3uUotHm-u7s'
@@ -42,6 +43,13 @@ def _offer_row_from_dict(d):
 
 def fetch_offer_tuple(offer_id):
     """Fetch single offer and return tuple (id, name, price, quantity, image, details, category) or None"""
+    try:
+        offer_id = int(offer_id)
+    except Exception:
+        # fallback: if can't convert, return None
+        logger.error(f"Invalid offer_id for fetch_offer_tuple: {offer_id}")
+        return None
+
     try:
         res = supabase.table("offers").select("*").eq("id", offer_id).single().execute()
         if res.data:
@@ -74,6 +82,12 @@ def get_connection():
 def record_transaction(user_id, offer_id, amount):
     """سجل المعاملة في جدول transactions."""
     try:
+        user_id = int(user_id)
+        offer_id = int(offer_id)
+    except Exception:
+        # if can't convert, still try to insert as-is
+        pass
+    try:
         supabase.table("transactions").insert({
             "user_id": user_id,
             "offer_id": offer_id,
@@ -84,6 +98,11 @@ def record_transaction(user_id, offer_id, amount):
 
 def is_user_banned(user_id):
     try:
+        user_id = int(user_id)
+    except Exception:
+        # invalid id -> not banned
+        return False
+    try:
         res = supabase.table("banned_users").select("user_id").eq("user_id", user_id).execute()
         return bool(res.data)
     except Exception as e:
@@ -92,15 +111,32 @@ def is_user_banned(user_id):
 
 def update_user(user_id, username):
     try:
-        # upsert to create or update username
-        supabase.table("users").upsert({
-            "user_id": user_id,
-            "username": username
-        }, on_conflict="user_id").execute()
+        user_id = int(user_id)
+    except Exception:
+        logger.error(f"Invalid user_id in update_user: {user_id}")
+        return
+    try:
+        # Try to update existing user
+        res = supabase.table("users").select("user_id").eq("user_id", user_id).single().execute()
+        exists = bool(res.data)
+        if exists:
+            supabase.table("users").update({"username": username}).eq("user_id", user_id).execute()
+        else:
+            # insert new
+            supabase.table("users").insert({
+                "user_id": user_id,
+                "username": username,
+                "balance": 0
+            }).execute()
     except Exception as e:
         logger.error(f"Error updating user {user_id}: {e}")
 
 def get_user_balance(user_id):
+    try:
+        user_id = int(user_id)
+    except Exception:
+        logger.error(f"Invalid user_id in get_user_balance: {user_id}")
+        return 0
     try:
         res = supabase.table("users").select("balance").eq("user_id", user_id).single().execute()
         if res.data and "balance" in res.data:
@@ -115,10 +151,14 @@ def get_user_balance(user_id):
 
 def update_balance(user_id, amount):
     try:
+        user_id = int(user_id)
+    except Exception:
+        logger.error(f"Invalid user_id in update_balance: {user_id}")
+        return
+    try:
         # Get current balance
         current = get_user_balance(user_id)
         new_balance = (current or 0) + amount
-        # Prevent negative balances system-wide? Original code allowed checks elsewhere; here we simply set new value.
         supabase.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
     except Exception as e:
         logger.error(f"Error updating balance for {user_id}: {e}")
@@ -130,15 +170,20 @@ def update_balance(user_id, amount):
 
 def add_recharge_request(user_id, deposit_amount, transaction_id):
     try:
+        user_id = int(user_id)
+    except Exception:
+        logger.debug(f"add_recharge_request: couldn't cast user_id {user_id} to int")
+    try:
         res = supabase.table("recharge_requests").insert({
             "user_id": user_id,
             "deposit_amount": deposit_amount,
-            "transaction_id": transaction_id
+            "transaction_id": transaction_id,
+            "status": "Pending"
         }).execute()
         if res.data and len(res.data) > 0:
-            # Supabase returns list of inserted rows; get the request_id if present
             inserted = res.data[0]
-            return inserted.get("request_id") or inserted.get("id")  # fallback in case of different naming
+            # try different possible id names
+            return inserted.get("request_id") or inserted.get("id")
         return None
     except Exception as e:
         logger.error(f"Error adding recharge request: {e}")
@@ -146,11 +191,21 @@ def add_recharge_request(user_id, deposit_amount, transaction_id):
 
 def update_request_status(request_id, status):
     try:
+        # request_id may be int
+        try:
+            request_id = int(request_id)
+        except Exception:
+            pass
         supabase.table("recharge_requests").update({"status": status}).eq("request_id", request_id).execute()
     except Exception as e:
         logger.error(f"Error updating request status: {e}")
 
 def update_offer_in_db(offer_id, name, details, price, quantity, image):
+    try:
+        offer_id = int(offer_id)
+    except Exception:
+        logger.error(f"Invalid offer_id in update_offer_in_db: {offer_id}")
+        return
     try:
         supabase.table("offers").update({
             "name": name,
@@ -163,6 +218,11 @@ def update_offer_in_db(offer_id, name, details, price, quantity, image):
         logger.error(f"Error updating offer {offer_id}: {e}")
 
 def delete_offer_from_db(offer_id):
+    try:
+        offer_id = int(offer_id)
+    except Exception:
+        logger.error(f"Invalid offer_id in delete_offer_from_db: {offer_id}")
+        return
     try:
         supabase.table("offers").delete().eq("id", offer_id).execute()
     except Exception as e:
@@ -212,7 +272,7 @@ def process_quantity(message, offer_index, user_id):
 
         # تحديث الكمية
         try:
-            supabase.table("offers").update({"quantity": (offer[3] or 0) - quantity}).eq("id", offer_index).execute()
+            supabase.table("offers").update({"quantity": (offer[3] or 0) - quantity}).eq("id", int(offer_index)).execute()
         except Exception as e:
             logger.error(f"Error updating offer quantity {offer_index}: {e}")
 
@@ -289,8 +349,9 @@ def start(message):
 @bot.callback_query_handler(func=lambda call: call.data == "show_offers")
 def show_offers(call):
     try:
-        res = supabase.table("offers").select("category").not_("category", "is", None).execute()
-        # res.data may contain duplicates; get distinct categories
+        # older SDKs or different environments may not support advanced .not_ constructs,
+        # so fetch all offers and extract categories locally (skip None/empty)
+        res = supabase.table("offers").select("category").execute()
         cats = set()
         if res.data:
             for d in res.data:
@@ -429,7 +490,6 @@ def update_offer(message, offer_id, new_name, new_details, new_price):
         update_offer_in_db(offer_id, new_name, new_details, new_price, new_quantity, None)
         bot.send_message(message.chat.id, "✅ تم تعديل العرض بنجاح.")
     except ValueError:
-        # original code attempted to use call but call is not in this scope; preserve behavior by sending message
         bot.send_message(message.chat.id, "⚠️ ادخل كمية صالحة.")
     except Exception as e:
         logger.error(f"Error updating offer via handler: {e}")
@@ -555,7 +615,11 @@ def cancel_order(message, user_id):
 
     # جلب آخر معاملة
     try:
-        res = supabase.table("transactions").select("amount").eq("user_id", user_id).order("id", desc=True).limit(1).execute()
+        try:
+            uid = int(user_id)
+        except Exception:
+            uid = user_id
+        res = supabase.table("transactions").select("amount").eq("user_id", uid).order("id", desc=True).limit(1).execute()
         transaction = None
         if res.data and len(res.data) > 0:
             transaction = res.data[0]
@@ -992,4 +1056,3 @@ if __name__ == '__main__':
 
     bot.polling(none_stop=True, interval=0, timeout=20, long_polling_timeout=60)
     time.sleep(15)
-    
