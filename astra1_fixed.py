@@ -1,13 +1,19 @@
-from flask import Flask
-import threading
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import sqlite3
-import psycopg2
 import logging
 import os
 import time
+from supabase import create_client, Client
+
+# ------------------ CONFIG ------------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Supabase credentials (placed directly as you requested - NOT recommended for production)
+SUPABASE_URL = "https://rjhtgcorsuxvctablycl.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqaHRnY29yc3V4dmN0YWJseWNsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDE1MjU4OSwiZXhwIjoyMDc5NzI4NTg5fQ.os0P5e6Tfr5eri_CCs5xt39P_tYTRhoQxwG_Z2nyLCU"
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 API_TOKEN = '7652837258:AAFsCZKdyfobBMz4KP1KGD6J3uUotHm-u7s'
 bot = telebot.TeleBot(API_TOKEN)
@@ -15,215 +21,200 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 ADMIN_ID = 5584938116
 
-# بيانات Supabase
-DB_CONFIG = {
-    "host": "db.rjhtgcorsuxvctablycl.supabase.co",
-    "port": 5432,
-    "database": "postgres",
-    "user": "postgres",
-    "password": "cEmaA0HxXM9vt2nk"
-}
+# ------------------ Helper converters / fetchers to keep original tuple-based interfaces ------------------
+
+def _offer_row_from_dict(d):
+    """
+    Return a tuple like (id, name, price, quantity, image, details, category)
+    to preserve original code assumptions about indexing.
+    """
+    if not d:
+        return None
+    return (
+        d.get("id"),
+        d.get("name"),
+        d.get("price"),
+        d.get("quantity"),
+        d.get("image"),
+        d.get("details"),
+        d.get("category")
+    )
+
+def fetch_offer_tuple(offer_id):
+    """Fetch single offer and return tuple (id, name, price, quantity, image, details, category) or None"""
+    try:
+        res = supabase.table("offers").select("*").eq("id", offer_id).single().execute()
+        if res.data:
+            return _offer_row_from_dict(res.data)
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching offer {offer_id}: {e}")
+        return None
+
+def _rows_from_list_of_dicts(list_dicts):
+    """Convert list of dict rows from Supabase to list of tuples preserving order used in original code:
+       (id, name, price, quantity, image, details, category)
+    """
+    rows = []
+    if not list_dicts:
+        return rows
+    for d in list_dicts:
+        rows.append(_offer_row_from_dict(d))
+    return rows
+
+# ------------------ DB-like functions (replace sqlite behavior with Supabase) ------------------
 
 def get_connection():
-    conn = psycopg2.connect(**DB_CONFIG)
-    return conn, conn.cursor()
+    """
+    Kept for compatibility with original code where get_connection returned connection and cursor.
+    Here we return supabase client and None for cursor.
+    """
+    return supabase, None
 
 def record_transaction(user_id, offer_id, amount):
-    """تسجيل عملية شراء"""
-    conn, cur = get_connection()
+    """سجل المعاملة في جدول transactions."""
     try:
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS transactions (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT,
-                offer_id BIGINT,
-                amount NUMERIC,
-                timestamp TIMESTAMPTZ DEFAULT NOW()
-            )
-        ''')
-        cur.execute(
-            "INSERT INTO transactions (user_id, offer_id, amount) VALUES (%s, %s, %s)",
-            (user_id, offer_id, amount)
-        )
-        conn.commit()
+        supabase.table("transactions").insert({
+            "user_id": user_id,
+            "offer_id": offer_id,
+            "amount": amount
+        }).execute()
     except Exception as e:
-        logger.error(f"Transaction error: {e}")
-    finally:
-        conn.close()
-
-def init_tables():
-    conn, cur = get_connection()
-    try:
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY,
-                username TEXT,
-                balance NUMERIC DEFAULT 0
-            )
-        ''')
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS banned_users (
-                user_id BIGINT PRIMARY KEY
-            )
-        ''')
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS offers (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                details TEXT NOT NULL,
-                price NUMERIC NOT NULL,
-                quantity INTEGER NOT NULL,
-                image TEXT,
-                category TEXT
-            )
-        ''')
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS recharge_requests (
-                request_id SERIAL PRIMARY KEY,
-                user_id BIGINT,
-                deposit_amount NUMERIC,
-                transaction_id TEXT,
-                status TEXT DEFAULT 'Pending'
-            )
-        ''')
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Init error: {e}")
-    finally:
-        conn.close()
-
-# تشغيل إنشاء الجداول
-init_tables()
-
-def create_offer_buttons(offers, row_width=2):
-    markup = InlineKeyboardMarkup(row_width=row_width)
-    for i in range(0, len(offers), row_width):
-        row = offers[i:i + row_width]
-        buttons = [
-            InlineKeyboardButton(offer[1], callback_data=f"offer_{offer[0]}")
-            for offer in row
-        ]
-        markup.row(*buttons)
-    return markup
+        logging.getLogger(__name__).error(f"Error recording transaction: {e}")
 
 def is_user_banned(user_id):
-    conn, cur = get_connection()
-    cur.execute('SELECT 1 FROM banned_users WHERE user_id = %s', (user_id,))
-    result = cur.fetchone()
-    conn.close()
-    return result is not None
+    try:
+        res = supabase.table("banned_users").select("user_id").eq("user_id", user_id).execute()
+        return bool(res.data)
+    except Exception as e:
+        logger.error(f"Error checking banned status: {e}")
+        return False
+
 def update_user(user_id, username):
     try:
-        conn, cur = get_connection()
-        cur.execute('''
-            INSERT INTO users (user_id, username)
-            VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET username=excluded.username
-        ''', (user_id, username))
-        conn.commit()
-        conn.close()
+        # upsert to create or update username
+        supabase.table("users").upsert({
+            "user_id": user_id,
+            "username": username
+        }, on_conflict="user_id").execute()
     except Exception as e:
-        print(e)
+        logger.error(f"Error updating user {user_id}: {e}")
+
 def get_user_balance(user_id):
-            try:
-                cursor.execute('SELECT balance FROM users WHERE user_id = ?', (user_id,))
-                result = cursor.fetchone()
-                return result[0] if result else 0
-            except sqlite3.Error as e:
-                logger.error(f"Error fetching balance: {e}")
-                return 0
+    try:
+        res = supabase.table("users").select("balance").eq("user_id", user_id).single().execute()
+        if res.data and "balance" in res.data:
+            return res.data["balance"] or 0
+        # if user not found, create user with balance 0 to preserve behavior
+        # but don't override username
+        supabase.table("users").insert({"user_id": user_id, "balance": 0}).execute()
+        return 0
+    except Exception as e:
+        logger.error(f"Error fetching balance: {e}")
+        return 0
+
 def update_balance(user_id, amount):
-            try:
-                cursor.execute('''
-                UPDATE users
-                SET balance = balance + ?
-                WHERE user_id = ?
-                ''', (amount, user_id))
-                conn.commit()
-            except sqlite3.Error as e:
-                logger.error(f"Error updating balance: {e}")
-                bot.send_message(user_id, "⚠️ حدث خطأ أثناء تحديث رصيدك. يرجى المحاولة لاحقًا.")
+    try:
+        # Get current balance
+        current = get_user_balance(user_id)
+        new_balance = (current or 0) + amount
+        # Prevent negative balances system-wide? Original code allowed checks elsewhere; here we simply set new value.
+        supabase.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
+    except Exception as e:
+        logger.error(f"Error updating balance for {user_id}: {e}")
+        try:
+            bot.send_message(user_id, "⚠️ حدث خطأ أثناء تحديث رصيدك. يرجى المحاولة لاحقًا.")
+        except Exception:
+            # ignore sending errors
+            pass
+
 def add_recharge_request(user_id, deposit_amount, transaction_id):
-            try:
-                cursor.execute('''
-                INSERT INTO recharge_requests (user_id, deposit_amount, transaction_id)
-                VALUES (?, ?, ?)
-                ''', (user_id, deposit_amount, transaction_id))
-                conn.commit()
-                return cursor.lastrowid
-            except sqlite3.Error as e:
-                logger.error(f"Error adding recharge request: {e}")
-                return None
+    try:
+        res = supabase.table("recharge_requests").insert({
+            "user_id": user_id,
+            "deposit_amount": deposit_amount,
+            "transaction_id": transaction_id
+        }).execute()
+        if res.data and len(res.data) > 0:
+            # Supabase returns list of inserted rows; get the request_id if present
+            inserted = res.data[0]
+            return inserted.get("request_id") or inserted.get("id")  # fallback in case of different naming
+        return None
+    except Exception as e:
+        logger.error(f"Error adding recharge request: {e}")
+        return None
+
 def update_request_status(request_id, status):
-            try:
-                cursor.execute('''
-                UPDATE recharge_requests
-                SET status = ?
-                WHERE request_id = ?
-                ''', (status, request_id))
-                conn.commit()
-            except sqlite3.Error as e:
-                logger.error(f"Error updating request status: {e}")
+    try:
+        supabase.table("recharge_requests").update({"status": status}).eq("request_id", request_id).execute()
+    except Exception as e:
+        logger.error(f"Error updating request status: {e}")
+
 def update_offer_in_db(offer_id, name, details, price, quantity, image):
-    cursor.execute("UPDATE offers SET name = ?, details = ?, price = ?, quantity = ?, image = ? WHERE id = ?",
-                   (name, details, price, quantity, image, offer_id))
-    conn.commit()
+    try:
+        supabase.table("offers").update({
+            "name": name,
+            "details": details,
+            "price": price,
+            "quantity": quantity,
+            "image": image
+        }).eq("id", offer_id).execute()
+    except Exception as e:
+        logger.error(f"Error updating offer {offer_id}: {e}")
+
 def delete_offer_from_db(offer_id):
-    cursor.execute("DELETE FROM offers WHERE id = ?", (offer_id,))
-    conn.commit()
+    try:
+        supabase.table("offers").delete().eq("id", offer_id).execute()
+    except Exception as e:
+        logger.error(f"Error deleting offer {offer_id}: {e}")
+
 def check_offers_in_db():
     try:
-        cursor.execute('SELECT * FROM offers')
-        offers = cursor.fetchall()
+        res = supabase.table("offers").select("*").execute()
+        offers = res.data
         if offers:
             print(f"عدد العروض الموجودة في قاعدة البيانات: {len(offers)}")
-            for offer in offers:
-                print(offer)
+            for d in offers:
+                print(d)
         else:
             print("لا توجد عروض في قاعدة البيانات.")
-    except sqlite3.Error as e:
+    except Exception as e:
         print(f"حدث خطأ أثناء فحص العروض: {e}")
-check_offers_in_db()
+
 def process_quantity(message, offer_index, user_id):
     try:
         quantity = int(message.text)
 
         # جلب العرض
-        conn = sqlite3.connect(db_path, check_same_thread=False)
-        cur = conn.cursor()
-
-        cur.execute('SELECT id, name, price, quantity FROM offers WHERE id = ?', (offer_index,))
-        offer = cur.fetchone()
+        offer = fetch_offer_tuple(offer_index)
 
         if offer is None:
             bot.send_message(message.chat.id, "🚫 لم يتم العثور على العرض.")
-            conn.close()
             return
 
         if quantity <= 0:
             bot.send_message(message.chat.id, "⚠️ الكمية يجب أن تكون أكبر من صفر.")
-            conn.close()
             return
 
-        if quantity > offer[3]:
+        if quantity > (offer[3] or 0):
             bot.send_message(message.chat.id, f"⚠️ عذراً، الكمية المطلوبة أكبر من المتاحة. المتاح: {offer[3]} 📦")
-            conn.close()
             return
 
-        total_price = offer[2] * quantity
+        total_price = (offer[2] or 0) * quantity
         balance = get_user_balance(user_id)
 
         if balance < total_price:
             bot.send_message(message.chat.id, "⚠️ رصيدك غير كافٍ لإتمام العملية!")
-            conn.close()
             return
 
         # خصم الرصيد
         update_balance(user_id, -total_price)
 
         # تحديث الكمية
-        cur.execute('UPDATE offers SET quantity = quantity - ? WHERE id = ?', (quantity, offer_index))
-        conn.commit()
+        try:
+            supabase.table("offers").update({"quantity": (offer[3] or 0) - quantity}).eq("id", offer_index).execute()
+        except Exception as e:
+            logger.error(f"Error updating offer quantity {offer_index}: {e}")
 
         # حفظ العملية
         record_transaction(user_id, offer_index, total_price)
@@ -237,21 +228,34 @@ def process_quantity(message, offer_index, user_id):
             reply_markup=markup
         )
 
-        notify_admin_for_delivery(user_id, offer, quantity)
-        conn.close()
+        # Need to fetch fresh offer dict for admin notification to show remaining quantity
+        try:
+            fresh = fetch_offer_tuple(offer_index)
+            notify_admin_for_delivery(user_id, fresh, quantity)
+        except Exception as e:
+            logger.error(f"Error notifying admin after purchase: {e}")
 
     except ValueError:
         bot.send_message(message.chat.id, "⚠️ الرجاء إدخال رقم صحيح للكمية.")
+    except Exception as e:
+        logger.error(f"Unexpected error in process_quantity: {e}")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ داخلي أثناء معالجة الكمية.")
+
 def get_all_offers():
-    cursor.execute("SELECT * FROM offers")
-    return cursor.fetchall()
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+    try:
+        res = supabase.table("offers").select("*").execute()
+        return _rows_from_list_of_dicts(res.data)
+    except Exception as e:
+        logger.error(f"Error fetching offers: {e}")
+        return []
+
 def create_buttons(buttons_by_row):
     markup = InlineKeyboardMarkup()
     for row in buttons_by_row:
         buttons = [InlineKeyboardButton(btn["text"], callback_data=btn["callback_data"]) for btn in row]
         markup.add(*buttons)
     return markup
+
 def create_offer_buttons(offers, row_width=2):
     markup = InlineKeyboardMarkup(row_width=row_width)
     for i in range(0, len(offers), row_width):
@@ -259,6 +263,9 @@ def create_offer_buttons(offers, row_width=2):
         buttons = [InlineKeyboardButton(offer[1], callback_data=f"offer_{offer[0]}") for offer in row]
         markup.add(*buttons)
     return markup
+
+# ------------------ Bot Handlers (kept original logic & names) ------------------
+
 @bot.message_handler(commands=['start'])
 def start(message):
     if is_user_banned(message.from_user.id):
@@ -268,7 +275,7 @@ def start(message):
     username = message.chat.username or "⛔ غير متوفر"
     update_user(user_id, username)
     buttons_structure = [
-        [{"text": "🛍️ العروض", "callback_data": "show_offers"}, {"text": "💳 شحن رصيد", "callback_data": "recharge_balance"}],  
+        [{"text": "🛍️ العروض", "callback_data": "show_offers"}, {"text": "💳 شحن رصيد", "callback_data": "recharge_balance"}],
         [{"text": "ℹ️ معلومات الحساب", "callback_data": "account_info"}],
         [{"text": "📩 التواصل مع الإدارة ", "callback_data": f"reply_to_admin_{message.chat.id}"}]
     ]
@@ -278,10 +285,23 @@ def start(message):
         "💳 اشحن رصيدك بسهولة.\n"
         "📩 تواصل معنا لأي استفسار.\n\n"
         "🔽 اختر أحد الخيارات من القائمة أدناه للبدء:", reply_markup=markup)
+
 @bot.callback_query_handler(func=lambda call: call.data == "show_offers")
 def show_offers(call):
-    cursor.execute("SELECT DISTINCT category FROM offers WHERE category IS NOT NULL")
-    categories = cursor.fetchall()
+    try:
+        res = supabase.table("offers").select("category").not_("category", "is", None).execute()
+        # res.data may contain duplicates; get distinct categories
+        cats = set()
+        if res.data:
+            for d in res.data:
+                c = d.get("category")
+                if c:
+                    cats.add(c)
+        categories = [(c,) for c in list(cats)]
+    except Exception as e:
+        logger.error(f"Error fetching categories: {e}")
+        categories = []
+
     if not categories:
         bot.answer_callback_query(
             call.id,
@@ -300,11 +320,19 @@ def show_offers(call):
     except telebot.apihelper.ApiTelegramException:
         bot.delete_message(call.message.chat.id, call.message.message_id)
         bot.send_message(call.message.chat.id, "📂 اختر القسم لعرض العروض:", reply_markup=markup)
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("category_"))
 def show_offers_by_category(call):
     category = call.data.split("category_")[1]
-    cursor.execute("SELECT id, name FROM offers WHERE category = ?", (category,))
-    offers = cursor.fetchall()
+    try:
+        res = supabase.table("offers").select("id", "name").eq("category", category).execute()
+        offers = []
+        if res.data:
+            for d in res.data:
+                offers.append((d.get("id"), d.get("name")))
+    except Exception as e:
+        logger.error(f"Error fetching offers by category {category}: {e}")
+        offers = []
 
     if not offers:
         bot.answer_callback_query(call.id, "❌ لا توجد عروض في هذا القسم.", show_alert=True)
@@ -327,13 +355,12 @@ def display_offer_details(call):
         return
     try:
         offer_id = int(call.data.split("_")[1])
-        cursor.execute('SELECT name, details, price, quantity, image FROM offers WHERE id = ?', (offer_id,))
-        offer = cursor.fetchone()
+        offer = fetch_offer_tuple(offer_id)  # (id, name, price, quantity, image, details, category)
         if not offer:
             bot.send_message(call.message.chat.id, "⚠️ لم يتم العثور على العرض.")
             return
-        text = (f"📌 اسم العرض: {offer[0]}\n"
-                f"📝 التفاصيل: {offer[1]}\n"
+        text = (f"📌 اسم العرض: {offer[1]}\n"
+                f"📝 التفاصيل: {offer[5]}\n"
                 f"💲 السعر: {offer[2]}\n"
                 f"📦 الكمية المتاحة: {offer[3]}")
         markup = InlineKeyboardMarkup()
@@ -343,12 +370,17 @@ def display_offer_details(call):
             markup.add(InlineKeyboardButton("🗑️ حذف العرض", callback_data=f"delete_{offer_id}"))
         markup.add(InlineKeyboardButton("🔙 رجوع", callback_data="show_offers"))
         if offer[4]:
-            bot.delete_message(call.message.chat.id, call.message.message_id)
+            try:
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+            except Exception:
+                pass
             bot.send_photo(call.message.chat.id, offer[4], caption=text, reply_markup=markup)
         else:
-                bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
-    except sqlite3.Error as e:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    except Exception as e:
+        logger.error(f"Error displaying offer details: {e}")
         bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء عرض تفاصيل العرض.")
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("delete_"))
 def delete_offer(call):
     if call.from_user.id != ADMIN_ID:
@@ -356,12 +388,13 @@ def delete_offer(call):
         return
     offer_id = int(call.data.split("_")[1])
     try:
-        cursor.execute('DELETE FROM offers WHERE id = ?', (offer_id,))
-        conn.commit()
+        delete_offer_from_db(offer_id)
         bot.answer_callback_query(call.id, "✅ تم حذف العرض بنجاح.")
         bot.edit_message_text("✅ تم حذف العرض.", call.message.chat.id, call.message.message_id)
-    except sqlite3.Error as e:
+    except Exception as e:
+        logger.error(f"Error deleting offer via callback: {e}")
         bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء حذف العرض. يرجى المحاولة لاحقًا.")
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("edit_"))
 def edit_offer(call):
     if call.from_user.id != ADMIN_ID:
@@ -370,14 +403,17 @@ def edit_offer(call):
     offer_id = int(call.data.split("_")[1])
     msg = bot.send_message(call.message.chat.id, "✏️ أدخل الاسم الجديد للعرض:")
     bot.register_next_step_handler(msg, get_new_name, offer_id)
+
 def get_new_name(message, offer_id):
     new_name = message.text.strip()
     msg = bot.send_message(message.chat.id, "✏️ أدخل التفاصيل الجديدة للعرض:")
     bot.register_next_step_handler(msg, get_new_details, offer_id, new_name)
+
 def get_new_details(message, offer_id, new_name):
     new_details = message.text.strip()
     msg = bot.send_message(message.chat.id, "✏️ أدخل السعر الجديد للعرض:")
     bot.register_next_step_handler(msg, get_new_price, offer_id, new_name, new_details)
+
 def get_new_price(message, offer_id, new_name, new_details):
     try:
         new_price = float(message.text.strip())
@@ -386,24 +422,19 @@ def get_new_price(message, offer_id, new_name, new_details):
     except ValueError:
         bot.send_message(message.chat.id, "⚠️ أدخل سعرًا صالحًا.")
         return
+
 def update_offer(message, offer_id, new_name, new_details, new_price):
     try:
         new_quantity = int(message.text.strip())
-        cursor.execute('''
-        UPDATE offers
-        SET name = ?, details = ?, price = ?, quantity = ?
-        WHERE id = ?
-        ''', (new_name, new_details, new_price, new_quantity, offer_id))
-        conn.commit()
+        update_offer_in_db(offer_id, new_name, new_details, new_price, new_quantity, None)
         bot.send_message(message.chat.id, "✅ تم تعديل العرض بنجاح.")
     except ValueError:
-        bot.answer_callback_query(
-            call.id,
-            "⚠️ ادخل كمية صالحة.",
-            show_alert=True
-        )
-    except sqlite3.Error as e:
+        # original code attempted to use call but call is not in this scope; preserve behavior by sending message
+        bot.send_message(message.chat.id, "⚠️ ادخل كمية صالحة.")
+    except Exception as e:
+        logger.error(f"Error updating offer via handler: {e}")
         bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء تعديل العرض. يرجى المحاولة لاحقًا.")
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
 def handle_purchase(call):
     if is_user_banned(call.from_user.id):
@@ -413,8 +444,7 @@ def handle_purchase(call):
     user_id = call.from_user.id
     offer_index = int(call.data.split("_")[1])
 
-    cursor.execute('SELECT id, name, price, quantity FROM offers WHERE id = ?', (offer_index,))
-    offer = cursor.fetchone()
+    offer = fetch_offer_tuple(offer_index)
 
     if offer is None:
         bot.answer_callback_query(call.id, "⚠️ العرض غير موجود.", show_alert=True)
@@ -422,19 +452,27 @@ def handle_purchase(call):
 
     balance = get_user_balance(user_id)
 
-    if balance < offer[2]:
+    if balance < (offer[2] or 0):
         bot.answer_callback_query(call.id, "⚠️ رصيدك غير كافٍ لإتمام العملية!", show_alert=True)
         return
 
-    bot.delete_message(call.message.chat.id, call.message.message_id)
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
 
     msg = bot.send_message(call.message.chat.id, "✏️ أدخل الكمية المطلوبة:")
     bot.register_next_step_handler(msg, process_quantity, offer_index, user_id)
+
 def notify_admin_for_delivery(user_id, offer, quantity):
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("إرسال طلب", callback_data=f"send_request_{user_id}"))
-    markup.add(InlineKeyboardButton("إلغاء الطلب", callback_data=f"cancel_request_{user_id}"))
-    bot.send_message(ADMIN_ID,  
+    """
+    offer is expected to be the tuple (id, name, price, quantity, image, details, category)
+    """
+    try:
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("إرسال طلب", callback_data=f"send_request_{user_id}"))
+        markup.add(InlineKeyboardButton("إلغاء الطلب", callback_data=f"cancel_request_{user_id}"))
+        bot.send_message(ADMIN_ID,
                          f"طلب جديد من المستخدم: {user_id}\n"
                          f"اسم العرض: {offer[1]}\n"
                          f"السعر: {offer[2]}\n"
@@ -442,6 +480,9 @@ def notify_admin_for_delivery(user_id, offer, quantity):
                          f"الكمية المتبقية: {offer[3]}",
                          reply_markup=markup
                      )
+    except Exception as e:
+        logger.error(f"Error notifying admin: {e}")
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("send_request_"))
 def request_delivery_message(call):
     if is_user_banned(call.from_user.id):
@@ -450,16 +491,22 @@ def request_delivery_message(call):
     user_id = int(call.data.split("_")[2])
     msg = bot.send_message(call.message.chat.id, "أرسل رسالة أو ملف أو وسائط لتسليمها للمستخدم.")
     bot.register_next_step_handler(msg, deliver_to_user, user_id)
+
 def deliver_to_user(message, user_id):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("📩 رد على الإدارة", callback_data=f"reply_to_admin_{message.chat.id}"))
-    if message.photo:
-        bot.send_photo(user_id, message.photo[-1].file_id, caption=message.caption or "✅ تم تسليم الطلب.", reply_markup=markup)
-    elif message.document:
-        bot.send_document(user_id, message.document.file_id, caption=message.caption or "✅ تم تسليم الطلب.", reply_markup=markup)
-    elif message.text:
-        bot.send_message(user_id, message.text, reply_markup=markup)
-    bot.send_message(message.chat.id, "✅ تم تسليم الطلب للمستخدم.")
+    try:
+        if message.photo:
+            bot.send_photo(user_id, message.photo[-1].file_id, caption=message.caption or "✅ تم تسليم الطلب.", reply_markup=markup)
+        elif message.document:
+            bot.send_document(user_id, message.document.file_id, caption=message.caption or "✅ تم تسليم الطلب.", reply_markup=markup)
+        elif message.text:
+            bot.send_message(user_id, message.text, reply_markup=markup)
+        bot.send_message(message.chat.id, "✅ تم تسليم الطلب للمستخدم.")
+    except Exception as e:
+        logger.error(f"Error delivering to user {user_id}: {e}")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء تسليم الرسالة للمستخدم.")
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("reply_to_admin_"))
 def handle_user_reply(call):
     if is_user_banned(call.from_user.id):
@@ -474,8 +521,9 @@ def handle_user_reply(call):
         message_id=call.message.message_id,
         text="✏️ اكتب رسالتك للإدارة:",
         reply_markup=markup
-    ) 
+    )
     bot.register_next_step_handler(msg, send_reply_to_admin, call.message.chat.id, admin_id)
+
 def send_reply_to_admin(message, user_id, admin_id):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("رد على المستخدم", callback_data=f"send_request_{user_id}"))
@@ -483,36 +531,41 @@ def send_reply_to_admin(message, user_id, admin_id):
     user_info += f"المعرف: @{message.from_user.username or 'غير متوفر'}\n"
     user_info += f"ID: {user_id}\n"
     user_info += f"الرسالة:\n"
-    if message.photo:
-        bot.send_photo(admin_id, message.photo[-1].file_id, caption=user_info + (message.caption or "تم استلام رسالة من المستخدم."), reply_markup=markup)
-    elif message.document:
-        bot.send_document(admin_id, message.document.file_id, caption=user_info + (message.caption or "تم استلام رسالة من المستخدم."), reply_markup=markup)
-    elif message.text:
-        bot.send_message(admin_id, user_info + message.text, reply_markup=markup)
+    try:
+        if message.photo:
+            bot.send_photo(admin_id, message.photo[-1].file_id, caption=user_info + (message.caption or "تم استلام رسالة من المستخدم."), reply_markup=markup)
+        elif message.document:
+            bot.send_document(admin_id, message.document.file_id, caption=user_info + (message.caption or "تم استلام رسالة من المستخدم."), reply_markup=markup)
+        elif message.text:
+            bot.send_message(admin_id, user_info + message.text, reply_markup=markup)
 
-    bot.send_message(message.chat.id, "✅ تم إرسال رسالتك للإدارة.")
+        bot.send_message(message.chat.id, "✅ تم إرسال رسالتك للإدارة.")
+    except Exception as e:
+        logger.error(f"Error sending reply to admin: {e}")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء إرسال رسالتك للإدارة.")
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_request_"))
 def request_cancellation_reason(call):
     user_id = int(call.data.split("_")[2])
     msg = bot.send_message(call.message.chat.id, "✏️ أدخل سبب الإلغاء:")
     bot.register_next_step_handler(msg, cancel_order, user_id)
 
-
 def cancel_order(message, user_id):
     reason = message.text
 
-    # اتصال مستقل (مهم جداً)
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    cur = conn.cursor()
-
     # جلب آخر معاملة
-    cur.execute('SELECT amount FROM transactions WHERE user_id = ? ORDER BY id DESC LIMIT 1', (user_id,))
-    transaction = cur.fetchone()
-
-    print(f"Transaction fetched for user {user_id}: {transaction}")
+    try:
+        res = supabase.table("transactions").select("amount").eq("user_id", user_id).order("id", desc=True).limit(1).execute()
+        transaction = None
+        if res.data and len(res.data) > 0:
+            transaction = res.data[0]
+        logger.debug(f"Transaction fetched for user {user_id}: {transaction}")
+    except Exception as e:
+        logger.error(f"Error fetching transaction for cancel: {e}")
+        transaction = None
 
     if transaction:
-        amount_to_refund = transaction[0]  # لأن SELECT amount يرجع عنصر واحد فقط
+        amount_to_refund = transaction.get("amount", 0)
 
         update_balance(user_id, amount_to_refund)
 
@@ -528,7 +581,6 @@ def cancel_order(message, user_id):
     else:
         bot.send_message(user_id, "⚠️ لم يتم العثور على أي معاملة مرتبطة بهذا الطلب.")
 
-    conn.close()
 @bot.callback_query_handler(func=lambda call: call.data == "main_menu")
 def show_main_menu(call):
     if is_user_banned(call.from_user.id):
@@ -558,103 +610,115 @@ def show_main_menu(call):
     except telebot.apihelper.ApiTelegramException as e:
         bot.answer_callback_query(call.id, "⚠️ حدث خطأ أثناء تعديل الرسالة.", show_alert=True)
         print(f"Error editing message: {e}")
+
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
     if is_user_banned(call.from_user.id):
         bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
         return
     user_id = call.message.chat.id
-    if call.data == 'account_info':
-        username = call.message.chat.username or "غير متوفر"
-        balance = get_user_balance(user_id)
-        account_info = (
-            f"ℹ️ معلومات الحساب:\n"
-            f"👤 اسم المستخدم: @{username}\n"
-            f"🆔 معرف المستخدم: {user_id}\n"
-            f"💰 رصيد الحساب: {balance} USD\n"
-            "🔄 اشحن رصيدك للاستمتاع بخدماتنا المميزة."
-        )
-        back_button = types.InlineKeyboardMarkup(row_width=1)
-        back_button.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                              text=account_info, reply_markup=back_button)
-    elif call.data == 'recharge_balance':
-        keyboard = types.InlineKeyboardMarkup(row_width=1)
-        keyboard.add(
-            types.InlineKeyboardButton("💵 USDT", callback_data='usdt'),
-            types.InlineKeyboardButton("💰 Payeer", callback_data='payeer'),
-            types.InlineKeyboardButton("💰 Syriatel Cash", callback_data='syriatelcash'),
-            types.InlineKeyboardButton("💰 Sham Cash", callback_data='shamcash'),
-        )
-        keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
-        bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id, 
-                              text="💳 اختر وسيلة الدفع التي ترغب في استخدامها لشحن رصيدك 👇:", reply_markup=keyboard)
-    elif call.data == 'usdt':
-        if is_user_banned(call.from_user.id):
-            bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
-            return
-        keyboard = types.InlineKeyboardMarkup(row_width=1)
-        keyboard.add(
-            types.InlineKeyboardButton("💵 شبكة TRON", callback_data='network_tron'),
-            types.InlineKeyboardButton("💰 شبكة Ethereum", callback_data='network_ethereum')
-        )
-        keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
-        bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id, 
-                              text="👇 اختر شبكة الايداع 🌐 المناسبة 👇:", reply_markup=keyboard)
-    elif call.data == 'network_tron' or call.data == 'network_ethereum':
-        network = "TRON" if call.data == 'network_tron' else "Ethereum"
-        keyboard = types.InlineKeyboardMarkup()
-        keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, 
-                              text=f"✅ تم اختيار شبكة {network} 🌐.\n"
-                                    "\n"
-                                    "📥 عنوان الايداع:\n"
-                                    "\n"
-                                    "TRGQMLpJru9ReRts5UjySEYFaguRccnmFd\n"
-                                    "\n"
-                                    "⚠️ الحد الادنى للايداع 10💲.\n"
-                                    "\n"
-                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
-                                    "\n"
-                                    "\n"
-                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
-                              reply_markup=keyboard)
-        bot.register_next_step_handler(call.message, handle_deposit, network)
-    elif call.data == 'cancel':
-        bot.edit_message_text(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            text="✅ تم إلغاء العملية.",
-            reply_markup=types.InlineKeyboardMarkup().add(
-                types.InlineKeyboardButton("🔙 رجوع إلى الواجهة الرئيسية", callback_data='main_menu')
+    try:
+        if call.data == 'account_info':
+            username = call.message.chat.username or "غير متوفر"
+            balance = get_user_balance(user_id)
+            account_info = (
+                f"ℹ️ معلومات الحساب:\n"
+                f"👤 اسم المستخدم: @{username}\n"
+                f"🆔 معرف المستخدم: {user_id}\n"
+                f"💰 رصيد الحساب: {balance} USD\n"
+                "🔄 اشحن رصيدك للاستمتاع بخدماتنا المميزة."
             )
-        )
-        bot.clear_step_handler(call.message)
-    elif call.data.startswith('accept_'):
-        request_id = int(call.data.split('_')[1])
-        cursor.execute('SELECT user_id, deposit_amount FROM recharge_requests WHERE request_id = ?', (request_id,))
-        result = cursor.fetchone()
-        if result:
-            user_id, deposit_amount = result
-            update_balance(user_id, deposit_amount)
-            update_request_status(request_id, 'Accepted')
-            bot.send_message(user_id, f"✅ تم قبول الإيداع! تم إضافة {deposit_amount} USD إلى رصيدك.")
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, 
-                                  text="✅ تمت معالجة الطلب بالموافقة.")
-        else:
-            bot.send_message(call.message.chat.id, "⚠️ حدث خطأ: الطلب غير موجود.")
-    elif call.data.startswith('reject_'):
-        request_id = int(call.data.split('_')[1])
-        cursor.execute('SELECT user_id FROM recharge_requests WHERE request_id = ?', (request_id,))
-        result = cursor.fetchone()
-        if result:
-            user_id = result[0]
-            update_request_status(request_id, 'Rejected')
-            bot.send_message(user_id, "❎ تم رفض الإيداع. يرجى المحاولة مرة أخرى.")
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, 
-                                  text="❎ تمت معالجة الطلب بالرفض.")
-        else:
-            bot.send_message(call.message.chat.id, "⚠️ حدث خطأ: الطلب غير موجود.")
+            back_button = types.InlineKeyboardMarkup(row_width=1)
+            back_button.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  text=account_info, reply_markup=back_button)
+        elif call.data == 'recharge_balance':
+            keyboard = types.InlineKeyboardMarkup(row_width=1)
+            keyboard.add(
+                types.InlineKeyboardButton("💵 USDT", callback_data='usdt'),
+                types.InlineKeyboardButton("💰 Payeer", callback_data='payeer'),
+                types.InlineKeyboardButton("💰 Syriatel Cash", callback_data='syriatelcash'),
+                types.InlineKeyboardButton("💰 Sham Cash", callback_data='shamcash'),
+            )
+            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
+            bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
+                                  text="💳 اختر وسيلة الدفع التي ترغب في استخدامها لشحن رصيدك 👇:", reply_markup=keyboard)
+        elif call.data == 'usdt':
+            if is_user_banned(call.from_user.id):
+                bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
+                return
+            keyboard = types.InlineKeyboardMarkup(row_width=1)
+            keyboard.add(
+                types.InlineKeyboardButton("💵 شبكة TRON", callback_data='network_tron'),
+                types.InlineKeyboardButton("💰 شبكة Ethereum", callback_data='network_ethereum')
+            )
+            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
+            bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
+                                  text="👇 اختر شبكة الايداع 🌐 المناسبة 👇:", reply_markup=keyboard)
+        elif call.data == 'network_tron' or call.data == 'network_ethereum':
+            network = "TRON" if call.data == 'network_tron' else "Ethereum"
+            keyboard = types.InlineKeyboardMarkup()
+            keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  text=f"✅ تم اختيار شبكة {network} 🌐.\n"
+                                        "\n"
+                                        "📥 عنوان الايداع:\n"
+                                        "\n"
+                                        "TRGQMLpJru9ReRts5UjySEYFaguRccnmFd\n"
+                                        "\n"
+                                        "⚠️ الحد الادنى للايداع 10💲.\n"
+                                        "\n"
+                                        "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
+                                        "\n"
+                                        "\n"
+                                        "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
+                                  reply_markup=keyboard)
+            bot.register_next_step_handler(call.message, handle_deposit, network)
+        elif call.data == 'cancel':
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text="✅ تم إلغاء العملية.",
+                reply_markup=types.InlineKeyboardMarkup().add(
+                    types.InlineKeyboardButton("🔙 رجوع إلى الواجهة الرئيسية", callback_data='main_menu')
+                )
+            )
+            bot.clear_step_handler(call.message)
+        elif call.data.startswith('accept_'):
+            request_id = int(call.data.split('_')[1])
+            try:
+                res = supabase.table("recharge_requests").select("user_id", "deposit_amount").eq("request_id", request_id).single().execute()
+                if res.data:
+                    user_id_req = res.data.get("user_id")
+                    deposit_amount = res.data.get("deposit_amount", 0)
+                    update_balance(user_id_req, deposit_amount)
+                    update_request_status(request_id, 'Accepted')
+                    bot.send_message(user_id_req, f"✅ تم قبول الإيداع! تم إضافة {deposit_amount} USD إلى رصيدك.")
+                    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                          text="✅ تمت معالجة الطلب بالموافقة.")
+                else:
+                    bot.send_message(call.message.chat.id, "⚠️ حدث خطأ: الطلب غير موجود.")
+            except Exception as e:
+                logger.error(f"Error accepting recharge request {request_id}: {e}")
+                bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء معالجة الطلب.")
+        elif call.data.startswith('reject_'):
+            request_id = int(call.data.split('_')[1])
+            try:
+                res = supabase.table("recharge_requests").select("user_id").eq("request_id", request_id).single().execute()
+                if res.data:
+                    user_id_req = res.data.get("user_id")
+                    update_request_status(request_id, 'Rejected')
+                    bot.send_message(user_id_req, "❎ تم رفض الإيداع. يرجى المحاولة مرة أخرى.")
+                    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                          text="❎ تمت معالجة الطلب بالرفض.")
+                else:
+                    bot.send_message(call.message.chat.id, "⚠️ حدث خطأ: الطلب غير موجود.")
+            except Exception as e:
+                logger.error(f"Error rejecting recharge request {request_id}: {e}")
+                bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء معالجة الطلب.")
+    except Exception as e:
+        logger.error(f"Error in handle_query: {e}")
+
 def handle_deposit(message, network):
     try:
         deposit_amount = float(message.text)
@@ -663,6 +727,7 @@ def handle_deposit(message, network):
     except ValueError:
         bot.send_message(message.chat.id, "⚠️ الرجاء إدخال رقم صحيح.")
         bot.register_next_step_handler(message, handle_deposit, network)
+
 def handle_transaction(message, deposit_amount, network):
     transaction_id = message.text
     request_id = add_recharge_request(message.chat.id, deposit_amount, transaction_id)
@@ -674,6 +739,7 @@ def handle_transaction(message, deposit_amount, network):
         send_to_admin(request_id, message.chat.id, deposit_amount, transaction_id, network, message)
     else:
         bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء معالجة طلبك. يرجى المحاولة لاحقًا.")
+
 def send_to_admin(request_id, user_id, deposit_amount, transaction_id, network, message):
     try:
         user = bot.get_chat(user_id)
@@ -697,37 +763,42 @@ def send_to_admin(request_id, user_id, deposit_amount, transaction_id, network, 
         bot.send_message(ADMIN_ID, "اختر ما إذا كنت ترغب في قبول أو رفض الطلب.", reply_markup=keyboard)
     except Exception as e:
         logger.error(f"Error sending to admin: {e}")
+
 @bot.message_handler(commands=['add_offer'])
 def add_offer(message):
-        if message.from_user.id != ADMIN_ID:
-            bot.send_message(message.chat.id, "هذا الأمر مخصص للأدمن فقط!")
-            return
-        msg = bot.send_message(message.chat.id, "✏️ أدخل اسم العرض:")
-        bot.register_next_step_handler(msg, get_offer_name)
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "هذا الأمر مخصص للأدمن فقط!")
+        return
+    msg = bot.send_message(message.chat.id, "✏️ أدخل اسم العرض:")
+    bot.register_next_step_handler(msg, get_offer_name)
+
 def get_offer_name(message):
-        name = message.text.strip()
-        if not name:
-            bot.send_message(message.chat.id, "⚠️ اسم العرض لا يمكن أن يكون فارغًا.")
-            return
-        msg = bot.send_message(message.chat.id, "✏️ أدخل تفاصيل العرض:")
-        bot.register_next_step_handler(msg, get_offer_details, name)
+    name = message.text.strip()
+    if not name:
+        bot.send_message(message.chat.id, "⚠️ اسم العرض لا يمكن أن يكون فارغًا.")
+        return
+    msg = bot.send_message(message.chat.id, "✏️ أدخل تفاصيل العرض:")
+    bot.register_next_step_handler(msg, get_offer_details, name)
+
 def get_offer_details(message, name):
-        details = message.text.strip()
-        if not details:
-            bot.send_message(message.chat.id, "⚠️ تفاصيل العرض لا يمكن أن تكون فارغة.")
-            return
-        msg = bot.send_message(message.chat.id, "✏️ أدخل سعر العرض:")
-        bot.register_next_step_handler(msg, get_offer_price, name, details)
+    details = message.text.strip()
+    if not details:
+        bot.send_message(message.chat.id, "⚠️ تفاصيل العرض لا يمكن أن تكون فارغة.")
+        return
+    msg = bot.send_message(message.chat.id, "✏️ أدخل سعر العرض:")
+    bot.register_next_step_handler(msg, get_offer_price, name, details)
+
 def get_offer_price(message, name, details):
-        try:
-            price = float(message.text.strip())
-            if price <= 0:
-                bot.send_message(message.chat.id, "⚠️ يجب أن يكون السعر أكبر من صفر.")
-                return
-            msg = bot.send_message(message.chat.id, "✏️ أدخل الكمية المتاحة:")
-            bot.register_next_step_handler(msg, get_offer_quantity, name, details, price)
-        except ValueError:
-            bot.send_message(message.chat.id, "⚠️ أدخل رقمًا صحيحًا للسعر.")
+    try:
+        price = float(message.text.strip())
+        if price <= 0:
+            bot.send_message(message.chat.id, "⚠️ يجب أن يكون السعر أكبر من صفر.")
+            return
+        msg = bot.send_message(message.chat.id, "✏️ أدخل الكمية المتاحة:")
+        bot.register_next_step_handler(msg, get_offer_quantity, name, details, price)
+    except ValueError:
+        bot.send_message(message.chat.id, "⚠️ أدخل رقمًا صحيحًا للسعر.")
+
 def get_offer_quantity(message, name, details, price):
     try:
         quantity = int(message.text.strip())
@@ -738,6 +809,7 @@ def get_offer_quantity(message, name, details, price):
         bot.register_next_step_handler(msg, get_offer_category, name, details, price, quantity)
     except ValueError:
         bot.send_message(message.chat.id, "✏️ أدخل رقمًا صحيحًا للكمية.")
+
 def get_offer_category(message, name, details, price, quantity):
     category = message.text.strip()
     if not category:
@@ -749,13 +821,16 @@ def get_offer_category(message, name, details, price, quantity):
 def get_offer_image(message, name, details, price, quantity, category):
     image = message.photo[-1].file_id if message.photo else None
     try:
-        cursor.execute('''
-        INSERT INTO offers (name, details, price, quantity, category, image)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ''', (name, details, price, quantity, category, image))
-        conn.commit()
+        supabase.table("offers").insert({
+            "name": name,
+            "details": details,
+            "price": price,
+            "quantity": quantity,
+            "category": category,
+            "image": image
+        }).execute()
         bot.send_message(message.chat.id, "✅ تم إضافة العرض بنجاح مع القسم.")
-    except sqlite3.Error as e:
+    except Exception as e:
         logger.error(f"Error adding offer: {e}")
         bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء إضافة العرض. يرجى المحاولة لاحقًا.")
 
@@ -765,15 +840,17 @@ def show_users(message):
         bot.send_message(message.chat.id, "🚫 هذا الأمر مخصص للأدمن فقط!")
         return
     try:
-        cursor.execute('SELECT user_id, username, balance FROM users')
-        users = cursor.fetchall()
+        res = supabase.table("users").select("user_id", "username", "balance").execute()
+        users = res.data or []
         if not users:
             bot.send_message(message.chat.id, "❌ لا يوجد مستخدمون في قاعدة البيانات.")
             return
         user_count = len(users)
         response = f"عدد المستخدمين: {user_count}\n\n"
-        for user in users:
-            user_id, username, balance = user
+        for u in users:
+            user_id = u.get("user_id")
+            username = u.get("username")
+            balance = u.get("balance") or 0
             response += (f"معرف المستخدم: {user_id}\n"
                          f"اسم المستخدم: {username if username else 'غير متوفر'}\n"
                          f"الرصيد: {balance:.2f}\n"
@@ -783,9 +860,10 @@ def show_users(message):
                 bot.send_message(message.chat.id, response[i:i+4096])
         else:
             bot.send_message(message.chat.id, response)
-    except sqlite3.Error as e:
+    except Exception as e:
         bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء استرداد بيانات المستخدمين.")
         logger.error(f"Error fetching users: {e}")
+
 @bot.message_handler(commands=['update_balance'])
 def update_user_balance(message):
     if message.from_user.id != ADMIN_ID:
@@ -804,23 +882,23 @@ def process_balance_update(message):
         user_id = int(user_input[0])
         amount = float(user_input[1])
         # تحديث الرصيد
-        cursor.execute('SELECT balance FROM users WHERE user_id = ?', (user_id,))
-        user = cursor.fetchone()
+        res = supabase.table("users").select("balance").eq("user_id", user_id).single().execute()
+        user = res.data
         if not user:
             bot.send_message(message.chat.id, f"❎ المستخدم بمعرف {user_id} غير موجود.")
             return
-        new_balance = user[0] + amount
+        new_balance = (user.get("balance") or 0) + amount
         if new_balance < 0:
-            bot.send_message(message.chat.id, f"❌ لا يمكن خصم {abs(amount):.2f} لأن الرصيد الحالي ({user[0]:.2f}) لا يكفي.")
+            bot.send_message(message.chat.id, f"❌ لا يمكن خصم {abs(amount):.2f} لأن الرصيد الحالي ({user.get('balance',0):.2f}) لا يكفي.")
             return
-        cursor.execute('UPDATE users SET balance = ? WHERE user_id = ?', (new_balance, user_id))
-        conn.commit()
+        supabase.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
         bot.send_message(message.chat.id, f"✅ تم تحديث الرصيد بنجاح.\nالرصيد الجديد للمستخدم {user_id}: {new_balance:.2f}")
     except ValueError:
         bot.send_message(message.chat.id, "⚠️ يرجى التأكد من إدخال المعرف والمبلغ بشكل صحيح.")
-    except sqlite3.Error as e:
+    except Exception as e:
         bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء تحديث الرصيد. يرجى المحاولة لاحقًا.")
         logger.error(f"Error updating balance: {e}")
+
 @bot.message_handler(commands=['send_message'])
 def send_message_to_user(message):
     if message.from_user.id != ADMIN_ID:
@@ -829,6 +907,7 @@ def send_message_to_user(message):
     msg = bot.send_message(message.chat.id, "✏️ أدخل معرف المستخدم والرسالة (استخدام التنسيق: user_id message).\n"
                                             "مثال: 123456789 مرحبًا، هذا اختبار.")
     bot.register_next_step_handler(msg, process_message_to_user)
+
 def process_message_to_user(message):
     try:
         user_input = message.text.split(maxsplit=1)
@@ -845,24 +924,26 @@ def process_message_to_user(message):
         bot.send_message(message.chat.id, "⚠️ يرجى التأكد من إدخال المعرف والرسالة بشكل صحيح.")
     except telebot.apihelper.ApiTelegramException as e:
         bot.send_message(message.chat.id, f"⚠️ حدث خطأ أثناء إرسال الرسالة: {e}")
-@bot.message_handler(commands=['ban_user' ])
+
+@bot.message_handler(commands=['ban_user'])
 def ban_user(message):
     if message.from_user.id != ADMIN_ID:
         bot.send_message(message.chat.id, "هذا الأمر مخصص للأدمن فقط!")
         return
     msg = bot.send_message(message.chat.id, "أدخل معرف المستخدم الذي تريد حظره:")
     bot.register_next_step_handler(msg, process_ban_user)
+
 def process_ban_user(message):
     try:
         user_id = int(message.text)
-        cursor.execute('INSERT INTO banned_users (user_id) VALUES (?)', (user_id,))
-        conn.commit()
-        bot.send_message(message.chat.id, f"تم حظر المستخدم {user_id}." )
+        supabase.table("banned_users").insert({"user_id": user_id}).execute()
+        bot.send_message(message.chat.id, f"تم حظر المستخدم {user_id}.")
     except ValueError:
         bot.send_message(message.chat.id, "يرجى إدخال معرف مستخدم صحيح.")
-    except sqlite3.Error as e:
-        bot.send_message(message.chat.id, "حدث خطأ �ثناء حظر المستخدم." )
+    except Exception as e:
+        bot.send_message(message.chat.id, "حدث خطأ أثناء حظر المستخدم.")
         logger.error(f"Error banning user: {e}")
+
 @bot.message_handler(commands=['unban_user'])
 def unban_user(message):
     if message.from_user.id != ADMIN_ID:
@@ -874,40 +955,41 @@ def unban_user(message):
 def process_unban_user(message):
     try:
         user_id = int(message.text)
-        cursor.execute('DELETE FROM banned_users WHERE user_id = ?', (user_id,))
-        conn.commit()
+        supabase.table("banned_users").delete().eq("user_id", user_id).execute()
         bot.send_message(message.chat.id, f"✅ تم إلغاء حظر المستخدم {user_id}. يمكنه الآن استخدام البوت.")
     except ValueError:
         bot.send_message(message.chat.id, "❌ يرجى إدخال معرف مستخدم صحيح.")
-    except sqlite3.Error as e:
+    except Exception as e:
         bot.send_message(message.chat.id, "❌ حدث خطأ أثناء إلغاء حظر المستخدم.")
         logger.error(f"Error unbanning user: {e}")
+
 @bot.message_handler(commands=['get_banned_users'])
 def get_banned_users(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "هذا الأمر مخصص للأدمن فقط!")
+        bot.send_message(message.chat.id, "هذا الأمر مخصص للأادمن فقط!")
         return
-    cursor.execute('SELECT user_id FROM banned_users')
-    banned_users = cursor.fetchall()
-    if banned_users:
-        banned_users_list = "\n".join([f"معرف المستخدم: {user_id}" for (user_id,) in banned_users])
-        bot.send_message(message.chat.id, f"قائمة المستخدمين المحظورين:\n{banned_users_list}" )
-    else:
-        bot.send_message(message.chat.id, "لا يوجد مستخدمين محظورين حتى الآن." )
-app = Flask(__name__)
+    try:
+        res = supabase.table("banned_users").select("user_id").execute()
+        banned_users = res.data or []
+        if banned_users:
+            banned_users_list = "\n".join([f"معرف المستخدم: {d.get('user_id')}" for d in banned_users])
+            bot.send_message(message.chat.id, f"قائمة المستخدمين المحظورين:\n{banned_users_list}")
+        else:
+            bot.send_message(message.chat.id, "لا يوجد مستخدمين محظورين حتى الآن.")
+        logging.basicConfig(level=logging.DEBUG)
+        logger = logging.getLogger(__name__)
+    except Exception as e:
+        logger.error(f"Error getting banned users: {e}")
+        bot.send_message(message.chat.id, "حدث خطأ أثناء استرجاع قائمة المحظورين.")
 
-@app.route('/')
-def home():
-    return "Bot is running!"
+# ------------------ Entry point ------------------
+if __name__ == '__main__':
+    # Optionally print initial state of offers
+    try:
+        check_offers_in_db()
+    except Exception:
+        pass
 
-def run_flask():
-    app.run(host="0.0.0.0", port=8080)
-
-# شغل Flask في Thread منفصل
-flask_thread = threading.Thread(target=run_flask)
-flask_thread.start()
-
-# شغل البوت polling
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-bot.infinity_polling(timeout=20, long_polling_timeout=60)
+    bot.polling(none_stop=True, interval=0, timeout=20, long_polling_timeout=60)
+    time.sleep(15)
+    
