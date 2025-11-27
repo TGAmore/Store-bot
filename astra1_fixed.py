@@ -1,6 +1,9 @@
+from flask import Flask
+import threading
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+import sqlite3
 import psycopg2
 import logging
 import os
@@ -9,101 +12,103 @@ import time
 API_TOKEN = '7652837258:AAFsCZKdyfobBMz4KP1KGD6J3uUotHm-u7s'
 bot = telebot.TeleBot(API_TOKEN)
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(name)
+logger = logging.getLogger(__name__)
 ADMIN_ID = 5584938116
 
-بيانات الاتصال بـ Supabase
-
+# بيانات Supabase
 DB_CONFIG = {
-"host": "db.rjhtgcorsuxvctablycl.supabase.co",
-"port": 5432,
-"database": "postgres",
-"user": "postgres",
-"password": "هنا_ضع_كلمة_المرور_الخاصة_بك"
+    "host": "db.rjhtgcorsuxvctablycl.supabase.co",
+    "port": 5432,
+    "database": "postgres",
+    "user": "postgres",
+    "password": "cEmaA0HxXM9vt2nk"
 }
 
 def get_connection():
-conn = psycopg2.connect(**DB_CONFIG)
-return conn, conn.cursor()
+    conn = psycopg2.connect(**DB_CONFIG)
+    return conn, conn.cursor()
 
 def record_transaction(user_id, offer_id, amount):
-"""سجل المعاملة في جدول transactions (ينشئ الجدول إذا لم يكن موجودًا)."""
-conn, cur = get_connection()
-try:
-cur.execute('''CREATE TABLE IF NOT EXISTS transactions (
-id SERIAL PRIMARY KEY,
-user_id BIGINT,
-offer_id BIGINT,
-amount NUMERIC,
-timestamp TIMESTAMPTZ DEFAULT NOW()
-)''')
-cur.execute(
-'INSERT INTO transactions (user_id, offer_id, amount) VALUES (%s, %s, %s)',
-(user_id, offer_id, amount)
-)
-conn.commit()
-except Exception as e:
-logger.error(f"Error recording transaction: {e}")
-finally:
-conn.close()
+    """تسجيل عملية شراء"""
+    conn, cur = get_connection()
+    try:
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS transactions (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                offer_id BIGINT,
+                amount NUMERIC,
+                timestamp TIMESTAMPTZ DEFAULT NOW()
+            )
+        ''')
+        cur.execute(
+            "INSERT INTO transactions (user_id, offer_id, amount) VALUES (%s, %s, %s)",
+            (user_id, offer_id, amount)
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Transaction error: {e}")
+    finally:
+        conn.close()
 
 def init_tables():
-conn, cur = get_connection()
-try:
-cur.execute('''
-CREATE TABLE IF NOT EXISTS users (
-user_id BIGINT PRIMARY KEY,
-username TEXT,
-balance NUMERIC DEFAULT 0
-)
-''')
-cur.execute('''
-CREATE TABLE IF NOT EXISTS banned_users (
-user_id BIGINT PRIMARY KEY
-)
-''')
-cur.execute('''
-CREATE TABLE IF NOT EXISTS offers (
-id SERIAL PRIMARY KEY,
-name TEXT NOT NULL,
-details TEXT NOT NULL,
-price NUMERIC NOT NULL,
-quantity INTEGER NOT NULL,
-image TEXT,
-category TEXT
-)
-''')
-cur.execute('''
-CREATE TABLE IF NOT EXISTS recharge_requests (
-request_id SERIAL PRIMARY KEY,
-user_id BIGINT,
-deposit_amount NUMERIC,
-transaction_id TEXT,
-status TEXT DEFAULT 'Pending'
-)
-''')
-conn.commit()
-except Exception as e:
-logger.error(f"Error initializing tables: {e}")
-finally:
-conn.close()
+    conn, cur = get_connection()
+    try:
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                username TEXT,
+                balance NUMERIC DEFAULT 0
+            )
+        ''')
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS banned_users (
+                user_id BIGINT PRIMARY KEY
+            )
+        ''')
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS offers (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                details TEXT NOT NULL,
+                price NUMERIC NOT NULL,
+                quantity INTEGER NOT NULL,
+                image TEXT,
+                category TEXT
+            )
+        ''')
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS recharge_requests (
+                request_id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                deposit_amount NUMERIC,
+                transaction_id TEXT,
+                status TEXT DEFAULT 'Pending'
+            )
+        ''')
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Init error: {e}")
+    finally:
+        conn.close()
 
-استدعاء تهيئة الجداول عند بدء التشغيل
-
+# تشغيل إنشاء الجداول
 init_tables()
-    else:
-        raise
 
 def create_offer_buttons(offers, row_width=2):
     markup = InlineKeyboardMarkup(row_width=row_width)
     for i in range(0, len(offers), row_width):
         row = offers[i:i + row_width]
-        buttons = [InlineKeyboardButton(offer[1], callback_data=f"offer_{offer[0]}") for offer in row]
+        buttons = [
+            InlineKeyboardButton(offer[1], callback_data=f"offer_{offer[0]}")
+            for offer in row
+        ]
         markup.row(*buttons)
     return markup
+
 def is_user_banned(user_id):
     conn, cur = get_connection()
-    cur.execute('SELECT 1 FROM banned_users WHERE user_id = ?', (user_id,))
+    cur.execute('SELECT 1 FROM banned_users WHERE user_id = %s', (user_id,))
     result = cur.fetchone()
     conn.close()
     return result is not None
@@ -889,8 +894,20 @@ def get_banned_users(message):
         bot.send_message(message.chat.id, f"قائمة المستخدمين المحظورين:\n{banned_users_list}" )
     else:
         bot.send_message(message.chat.id, "لا يوجد مستخدمين محظورين حتى الآن." )
-        logging.basicConfig(level=logging.DEBUG)
-        logger = logging.getLogger(__name__)
-if __name__ == '__main__':
-        bot.polling(none_stop=True, interval=0, timeout=20, long_polling_timeout=60)
-        time.sleep(15)
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    app.run(host="0.0.0.0", port=8080)
+
+# شغل Flask في Thread منفصل
+flask_thread = threading.Thread(target=run_flask)
+flask_thread.start()
+
+# شغل البوت polling
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+bot.infinity_polling(timeout=20, long_polling_timeout=60)
