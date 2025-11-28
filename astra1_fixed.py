@@ -112,39 +112,43 @@ def is_user_banned(user_id):
 def update_user(user_id, username):
     try:
         user_id = int(user_id)
-    except Exception:
-        logger.error(f"Invalid user_id in update_user: {user_id}")
+    except:
         return
+
     try:
-        # Try to update existing user
-        res = supabase.table("users").select("user_id").eq("user_id", user_id).single().execute()
-        exists = bool(res.data)
-        if exists:
+        res = supabase.table("users").select("user_id").eq("user_id", user_id).execute()
+
+        if res.data and len(res.data) > 0:
             supabase.table("users").update({"username": username}).eq("user_id", user_id).execute()
         else:
-            # insert new
             supabase.table("users").insert({
                 "user_id": user_id,
                 "username": username,
                 "balance": 0
             }).execute()
+
     except Exception as e:
         logger.error(f"Error updating user {user_id}: {e}")
 
 def get_user_balance(user_id):
     try:
         user_id = int(user_id)
-    except Exception:
-        logger.error(f"Invalid user_id in get_user_balance: {user_id}")
+    except:
         return 0
+
     try:
-        res = supabase.table("users").select("balance").eq("user_id", user_id).single().execute()
-        if res.data and "balance" in res.data:
-            return res.data["balance"] or 0
-        # if user not found, create user with balance 0 to preserve behavior
-        # but don't override username
-        supabase.table("users").insert({"user_id": user_id, "balance": 0}).execute()
-        return 0
+        res = supabase.table("users").select("*").eq("user_id", user_id).execute()
+
+        # المستخدم غير موجود → إنشاؤه
+        if not res.data:
+            supabase.table("users").insert({
+                "user_id": user_id,
+                "balance": 0
+            }).execute()
+            return 0
+        
+        return res.data[0].get("balance", 0)
+
     except Exception as e:
         logger.error(f"Error fetching balance: {e}")
         return 0
@@ -171,8 +175,12 @@ def update_balance(user_id, amount):
 def add_recharge_request(user_id, deposit_amount, transaction_id):
     try:
         user_id = int(user_id)
-    except Exception:
-        logger.debug(f"add_recharge_request: couldn't cast user_id {user_id} to int")
+    except:
+        pass
+
+    # أهم تعديل:
+    update_user(user_id, None)   # ضمان أن المستخدم موجود قبل الإيداع
+
     try:
         res = supabase.table("recharge_requests").insert({
             "user_id": user_id,
@@ -180,11 +188,12 @@ def add_recharge_request(user_id, deposit_amount, transaction_id):
             "transaction_id": transaction_id,
             "status": "Pending"
         }).execute()
-        if res.data and len(res.data) > 0:
-            inserted = res.data[0]
-            # try different possible id names
-            return inserted.get("request_id") or inserted.get("id")
+
+        if res.data:
+            return res.data[0].get("id") or res.data[0].get("request_id")
+
         return None
+
     except Exception as e:
         logger.error(f"Error adding recharge request: {e}")
         return None
