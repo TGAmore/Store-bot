@@ -16,7 +16,7 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 # create client (assumes compatible supabase python lib is installed)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-API_TOKEN = '7652837258:AAEAvgJG3XzJH2S_3e0udRe2WvJDzMVDbbs'
+API_TOKEN = '7652837258:AAF3wXha7WaVKj6RwXiFnymBDb6qvy_vn_c'
 bot = telebot.TeleBot(API_TOKEN)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
