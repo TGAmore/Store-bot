@@ -1,3 +1,4 @@
+from flask import Flask, request
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -7,20 +8,20 @@ import time
 from supabase import create_client, Client
 
 # ------------------ CONFIG ------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Supabase credentials (placed directly as you requested - NOT recommended for production)
-SUPABASE_URL = "https://rjhtgcorsuxvctablycl.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqaHRnY29yc3V4dmN0YWJseWNsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDE1MjU4OSwiZXhwIjoyMDc5NzI4NTg5fQ.os0P5e6Tfr5eri_CCs5xt39P_tYTRhoQxwG_Z2nyLCU"
+API_TOKEN = "7652837258:AAEAvgJG3XzJH2S_3e0udRe2WvJDzMVDbbs"
 
-# create client (assumes compatible supabase python lib is installed)
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+bot = telebot.TeleBot(API_TOKEN, threaded=True)
+app = Flask(__name__)
 
-API_TOKEN = '7652837258:AAEAvgJG3XzJH2S_3e0udRe2WvJDzMVDbbs'
-bot = telebot.TeleBot(API_TOKEN)
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-ADMIN_ID = 5584938116
+@app.route(f"/webhook/{API_TOKEN}", methods=["POST"])
+def webhook():
+    if request.headers.get("content-type") == "application/json":
+        data = request.get_data().decode("utf-8")
+        update = telebot.types.Update.de_json(data)
+        bot.process_new_updates([update])
+        return "OK", 200
+    return "Invalid", 400
 
 # ------------------ Helper converters / fetchers to keep original tuple-based interfaces ------------------
 
@@ -1056,12 +1057,23 @@ def get_banned_users(message):
         bot.send_message(message.chat.id, "حدث خطأ أثناء استرجاع قائمة المحظورين.")
 
 # ------------------ Entry point ------------------
-if __name__ == '__main__':
     # Optionally print initial state of offers
-    try:
+
+if __name__ == "__main__":
+    import requests
+try:
         check_offers_in_db()
     except Exception:
         pass
+        
+    WEBHOOK_URL = f"https://55b759a2-3c10-4094-956e-28b1bda51207-dev.e1-eu-west-cdp.choreoapis.dev/default/sssssss/v1.0/webhook/{API_TOKEN}"
 
-    bot.polling(none_stop=True, interval=0, timeout=20, long_polling_timeout=60)
-    time.sleep(15)
+    print("🔄 Removing old webhook...")
+    requests.get(f"https://api.telegram.org/bot{API_TOKEN}/deleteWebhook")
+
+    print("🔧 Setting new webhook...")
+    r = requests.get(f"https://api.telegram.org/bot{API_TOKEN}/setWebhook?url={WEBHOOK_URL}")
+    print("Webhook response:", r.text)
+
+    print("🚀 Flask server starting...")
+    app.run(host="0.0.0.0", port=8000)
