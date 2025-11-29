@@ -16,7 +16,7 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 # create client (assumes compatible supabase python lib is installed)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-API_TOKEN = '7652837258:AAFsCZKdyfobBMz4KP1KGD6J3uUotHm-u7s'
+API_TOKEN = '7652837258:AAEAvgJG3XzJH2S_3e0udRe2WvJDzMVDbbs'
 bot = telebot.TeleBot(API_TOKEN)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -51,15 +51,9 @@ def fetch_offer_tuple(offer_id):
         return None
 
     try:
-        # use single().execute() — if no row, handle gracefully
-        res = supabase.table("offers").select("*").eq("id", offer_id).execute()
-        # res.data may be a list or dict depending on SDK; handle both
-        if not res or res.data is None:
-            return None
-        # if list, take first
-        row = res.data[0] if isinstance(res.data, list) and len(res.data) > 0 else res.data
-        if row:
-            return _offer_row_from_dict(row)
+        res = supabase.table("offers").select("*").eq("id", offer_id).single().execute()
+        if res.data:
+            return _offer_row_from_dict(res.data)
         return None
     except Exception as e:
         logger.error(f"Error fetching offer {offer_id}: {e}")
@@ -115,57 +109,46 @@ def is_user_banned(user_id):
         logger.error(f"Error checking banned status: {e}")
         return False
 
-# ------------------ FIXED: update_user (prevent PGRST116 by avoiding .single()) ------------------
-
 def update_user(user_id, username):
-    """
-    Ensure user exists in users table; if exists update username, else insert.
-    This version avoids using .single() which raises error when no rows exist.
-    """
     try:
         user_id = int(user_id)
-    except Exception:
-        logger.error(f"Invalid user_id in update_user: {user_id}")
+    except:
         return
 
     try:
-        # Check if user exists using execute() which returns a list in res.data
         res = supabase.table("users").select("user_id").eq("user_id", user_id).execute()
-        exists = bool(res.data)
-        if exists:
-            # update username (allow None)
+
+        if res.data and len(res.data) > 0:
             supabase.table("users").update({"username": username}).eq("user_id", user_id).execute()
         else:
-            # insert new user with zero balance
             supabase.table("users").insert({
                 "user_id": user_id,
                 "username": username,
                 "balance": 0
             }).execute()
+
     except Exception as e:
         logger.error(f"Error updating user {user_id}: {e}")
-
-# ------------------ FIXED: get_user_balance (robust if user missing) ------------------
 
 def get_user_balance(user_id):
     try:
         user_id = int(user_id)
-    except Exception:
-        logger.error(f"Invalid user_id in get_user_balance: {user_id}")
+    except:
         return 0
+
     try:
-        res = supabase.table("users").select("balance").eq("user_id", user_id).execute()
-        if res and res.data:
-            # res.data may be list of rows
-            row = res.data[0] if isinstance(res.data, list) and len(res.data) > 0 else res.data
-            if row and "balance" in row:
-                return row.get("balance") or 0
-        # if user not found, create user with balance 0
-        try:
-            supabase.table("users").insert({"user_id": user_id, "balance": 0, "username": None}).execute()
-        except Exception as insert_err:
-            logger.error(f"Error inserting missing user in get_user_balance: {insert_err}")
-        return 0
+        res = supabase.table("users").select("*").eq("user_id", user_id).execute()
+
+        # المستخدم غير موجود → إنشاؤه
+        if not res.data:
+            supabase.table("users").insert({
+                "user_id": user_id,
+                "balance": 0
+            }).execute()
+            return 0
+        
+        return res.data[0].get("balance", 0)
+
     except Exception as e:
         logger.error(f"Error fetching balance: {e}")
         return 0
@@ -192,8 +175,12 @@ def update_balance(user_id, amount):
 def add_recharge_request(user_id, deposit_amount, transaction_id):
     try:
         user_id = int(user_id)
-    except Exception:
-        logger.debug(f"add_recharge_request: couldn't cast user_id {user_id} to int")
+    except:
+        pass
+
+    # أهم تعديل:
+    update_user(user_id, None)   # ضمان أن المستخدم موجود قبل الإيداع
+
     try:
         res = supabase.table("recharge_requests").insert({
             "user_id": user_id,
@@ -201,11 +188,12 @@ def add_recharge_request(user_id, deposit_amount, transaction_id):
             "transaction_id": transaction_id,
             "status": "Pending"
         }).execute()
-        if res and res.data and len(res.data) > 0:
-            inserted = res.data[0]
-            # try different possible id names
-            return inserted.get("request_id") or inserted.get("id")
+
+        if res.data:
+            return res.data[0].get("id") or res.data[0].get("request_id")
+
         return None
+
     except Exception as e:
         logger.error(f"Error adding recharge request: {e}")
         return None
@@ -344,154 +332,736 @@ def create_offer_buttons(offers, row_width=2):
         buttons = [InlineKeyboardButton(offer[1], callback_data=f"offer_{offer[0]}") for offer in row]
         markup.add(*buttons)
     return markup
-# ------------------ ADMIN NOTIFY ------------------
 
-def notify_admin_for_delivery(user_id, offer, quantity):
-    try:
-        if offer is None:
-            return
-        name = offer[1]
-        details = offer[5]
-        price = offer[2]
-        msg = (
-            f"📦 **طلب جديد للتسليم**\n\n"
-            f"👤 المستخدم: `{user_id}`\n"
-            f"🎁 العرض: {name}\n"
-            f"ℹ️ التفاصيل: {details}\n"
-            f"🔢 الكمية: {quantity}\n"
-            f"💵 السعر الإجمالي: {price * quantity}"
-        )
-        bot.send_message(ADMIN_ID, msg, parse_mode="Markdown")
-    except Exception as e:
-        logger.error(f"Error notifying admin: {e}")
-
-# ------------------ MAIN MENU ------------------
-
-def send_main_menu(chat_id):
-    markup = InlineKeyboardMarkup()
-    markup.add(
-        InlineKeyboardButton("🎁 العروض", callback_data="offers"),
-        InlineKeyboardButton("💰 رصيدي", callback_data="balance")
-    )
-    markup.add(
-        InlineKeyboardButton("➕ شحن رصيد", callback_data="recharge")
-    )
-    bot.send_message(chat_id, "👋 أهلاً بك! اختر من القائمة:", reply_markup=markup)
-
-# ------------------ START ------------------
+# ------------------ Bot Handlers (kept original logic & names) ------------------
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    user_id = message.from_user.id
-    username = message.from_user.username
+    if is_user_banned(message.from_user.id):
+        bot.send_message(message.chat.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.")
+        return
+    user_id = message.chat.id
+    username = message.chat.username or "⛔ غير متوفر"
     update_user(user_id, username)
-    send_main_menu(message.chat.id)
+    buttons_structure = [
+        [{"text": "🛍️ العروض", "callback_data": "show_offers"}, {"text": "💳 شحن رصيد", "callback_data": "recharge_balance"}],
+        [{"text": "ℹ️ معلومات الحساب", "callback_data": "account_info"}],
+        [{"text": "📩 التواصل مع الإدارة ", "callback_data": f"reply_to_admin_{message.chat.id}"}]
+    ]
+    markup = create_buttons(buttons_structure)
+    bot.send_message(message.chat.id, f"🎉 مرحباً بك يا {message.from_user.first_name or 'ضيفنا العزيز'}\n في Astra Store!\n\n"
+        "🛒 اكتشف العروض المميزة.\n"
+        "💳 اشحن رصيدك بسهولة.\n"
+        "📩 تواصل معنا لأي استفسار.\n\n"
+        "🔽 اختر أحد الخيارات من القائمة أدناه للبدء:", reply_markup=markup)
 
-# ------------------ CALLBACK HANDLERS ------------------
+@bot.callback_query_handler(func=lambda call: call.data == "show_offers")
+def show_offers(call):
+    try:
+        # older SDKs or different environments may not support advanced .not_ constructs,
+        # so fetch all offers and extract categories locally (skip None/empty)
+        res = supabase.table("offers").select("category").execute()
+        cats = set()
+        if res.data:
+            for d in res.data:
+                c = d.get("category")
+                if c:
+                    cats.add(c)
+        categories = [(c,) for c in list(cats)]
+    except Exception as e:
+        logger.error(f"Error fetching categories: {e}")
+        categories = []
+
+    if not categories:
+        bot.answer_callback_query(
+            call.id,
+            "🚫 لا توجد عروض متاحة حالياً.",
+            show_alert=True
+        )
+        return
+
+    markup = InlineKeyboardMarkup(row_width=2)
+    for cat in categories:
+        markup.add(InlineKeyboardButton(cat[0], callback_data=f"category_{cat[0]}"))
+    markup.add(InlineKeyboardButton("🔙 رجوع", callback_data="main_menu"))
+
+    try:
+        bot.edit_message_text("📂 اختر القسم لعرض العروض:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    except telebot.apihelper.ApiTelegramException:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+        bot.send_message(call.message.chat.id, "📂 اختر القسم لعرض العروض:", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("category_"))
+def show_offers_by_category(call):
+    category = call.data.split("category_")[1]
+    try:
+        res = supabase.table("offers").select("id", "name").eq("category", category).execute()
+        offers = []
+        if res.data:
+            for d in res.data:
+                offers.append((d.get("id"), d.get("name")))
+    except Exception as e:
+        logger.error(f"Error fetching offers by category {category}: {e}")
+        offers = []
+
+    if not offers:
+        bot.answer_callback_query(call.id, "❌ لا توجد عروض في هذا القسم.", show_alert=True)
+        return
+
+    markup = InlineKeyboardMarkup(row_width=2)
+    for offer in offers:
+        markup.add(InlineKeyboardButton(offer[1], callback_data=f"offer_{offer[0]}"))
+    markup.add(InlineKeyboardButton("🔙 رجوع", callback_data="show_offers"))
+
+    try:
+        bot.edit_message_text(f"📂 العروض في قسم: {category}", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    except telebot.apihelper.ApiTelegramException:
+        bot.send_message(call.message.chat.id, f"📂 العروض في قسم: {category}", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("offer_"))
+def display_offer_details(call):
+    if is_user_banned(call.from_user.id):
+        bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
+        return
+    try:
+        offer_id = int(call.data.split("_")[1])
+        offer = fetch_offer_tuple(offer_id)  # (id, name, price, quantity, image, details, category)
+        if not offer:
+            bot.send_message(call.message.chat.id, "⚠️ لم يتم العثور على العرض.")
+            return
+        text = (f"📌 اسم العرض: {offer[1]}\n"
+                f"📝 التفاصيل: {offer[5]}\n"
+                f"💲 السعر: {offer[2]}\n"
+                f"📦 الكمية المتاحة: {offer[3]}")
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("🛒 شراء العرض", callback_data=f"buy_{offer_id}"))
+        if call.from_user.id == ADMIN_ID:
+            markup.add(InlineKeyboardButton("✏️ تعديل العرض", callback_data=f"edit_{offer_id}"))
+            markup.add(InlineKeyboardButton("🗑️ حذف العرض", callback_data=f"delete_{offer_id}"))
+        markup.add(InlineKeyboardButton("🔙 رجوع", callback_data="show_offers"))
+        if offer[4]:
+            try:
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+            except Exception:
+                pass
+            bot.send_photo(call.message.chat.id, offer[4], caption=text, reply_markup=markup)
+        else:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+    except Exception as e:
+        logger.error(f"Error displaying offer details: {e}")
+        bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء عرض تفاصيل العرض.")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("delete_"))
+def delete_offer(call):
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, "⚠️ هذا الأمر مخصص للأدمن فقط!")
+        return
+    offer_id = int(call.data.split("_")[1])
+    try:
+        delete_offer_from_db(offer_id)
+        bot.answer_callback_query(call.id, "✅ تم حذف العرض بنجاح.")
+        bot.edit_message_text("✅ تم حذف العرض.", call.message.chat.id, call.message.message_id)
+    except Exception as e:
+        logger.error(f"Error deleting offer via callback: {e}")
+        bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء حذف العرض. يرجى المحاولة لاحقًا.")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("edit_"))
+def edit_offer(call):
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, "⚠️ هذا الأمر مخصص للأدمن فقط!")
+        return
+    offer_id = int(call.data.split("_")[1])
+    msg = bot.send_message(call.message.chat.id, "✏️ أدخل الاسم الجديد للعرض:")
+    bot.register_next_step_handler(msg, get_new_name, offer_id)
+
+def get_new_name(message, offer_id):
+    new_name = message.text.strip()
+    msg = bot.send_message(message.chat.id, "✏️ أدخل التفاصيل الجديدة للعرض:")
+    bot.register_next_step_handler(msg, get_new_details, offer_id, new_name)
+
+def get_new_details(message, offer_id, new_name):
+    new_details = message.text.strip()
+    msg = bot.send_message(message.chat.id, "✏️ أدخل السعر الجديد للعرض:")
+    bot.register_next_step_handler(msg, get_new_price, offer_id, new_name, new_details)
+
+def get_new_price(message, offer_id, new_name, new_details):
+    try:
+        new_price = float(message.text.strip())
+        msg = bot.send_message(message.chat.id, "✏️ أدخل الكمية الجديدة للعرض:")
+        bot.register_next_step_handler(msg, update_offer, offer_id, new_name, new_details, new_price)
+    except ValueError:
+        bot.send_message(message.chat.id, "⚠️ أدخل سعرًا صالحًا.")
+        return
+
+def update_offer(message, offer_id, new_name, new_details, new_price):
+    try:
+        new_quantity = int(message.text.strip())
+        update_offer_in_db(offer_id, new_name, new_details, new_price, new_quantity, None)
+        bot.send_message(message.chat.id, "✅ تم تعديل العرض بنجاح.")
+    except ValueError:
+        bot.send_message(message.chat.id, "⚠️ ادخل كمية صالحة.")
+    except Exception as e:
+        logger.error(f"Error updating offer via handler: {e}")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء تعديل العرض. يرجى المحاولة لاحقًا.")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
+def handle_purchase(call):
+    if is_user_banned(call.from_user.id):
+        bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
+        return
+
+    user_id = call.from_user.id
+    offer_index = int(call.data.split("_")[1])
+
+    offer = fetch_offer_tuple(offer_index)
+
+    if offer is None:
+        bot.answer_callback_query(call.id, "⚠️ العرض غير موجود.", show_alert=True)
+        return
+
+    balance = get_user_balance(user_id)
+
+    if balance < (offer[2] or 0):
+        bot.answer_callback_query(call.id, "⚠️ رصيدك غير كافٍ لإتمام العملية!", show_alert=True)
+        return
+
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+
+    msg = bot.send_message(call.message.chat.id, "✏️ أدخل الكمية المطلوبة:")
+    bot.register_next_step_handler(msg, process_quantity, offer_index, user_id)
+
+def notify_admin_for_delivery(user_id, offer, quantity):
+    """
+    offer is expected to be the tuple (id, name, price, quantity, image, details, category)
+    """
+    try:
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("إرسال طلب", callback_data=f"send_request_{user_id}"))
+        markup.add(InlineKeyboardButton("إلغاء الطلب", callback_data=f"cancel_request_{user_id}"))
+        bot.send_message(ADMIN_ID,
+                         f"طلب جديد من المستخدم: {user_id}\n"
+                         f"اسم العرض: {offer[1]}\n"
+                         f"السعر: {offer[2]}\n"
+                         f"الكمية المطلوبة: {quantity}\n"
+                         f"الكمية المتبقية: {offer[3]}",
+                         reply_markup=markup
+                     )
+    except Exception as e:
+        logger.error(f"Error notifying admin: {e}")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("send_request_"))
+def request_delivery_message(call):
+    if is_user_banned(call.from_user.id):
+        bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
+        return
+    user_id = int(call.data.split("_")[2])
+    msg = bot.send_message(call.message.chat.id, "أرسل رسالة أو ملف أو وسائط لتسليمها للمستخدم.")
+    bot.register_next_step_handler(msg, deliver_to_user, user_id)
+
+def deliver_to_user(message, user_id):
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("📩 رد على الإدارة", callback_data=f"reply_to_admin_{message.chat.id}"))
+    try:
+        if message.photo:
+            bot.send_photo(user_id, message.photo[-1].file_id, caption=message.caption or "✅ تم تسليم الطلب.", reply_markup=markup)
+        elif message.document:
+            bot.send_document(user_id, message.document.file_id, caption=message.caption or "✅ تم تسليم الطلب.", reply_markup=markup)
+        elif message.text:
+            bot.send_message(user_id, message.text, reply_markup=markup)
+        bot.send_message(message.chat.id, "✅ تم تسليم الطلب للمستخدم.")
+    except Exception as e:
+        logger.error(f"Error delivering to user {user_id}: {e}")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء تسليم الرسالة للمستخدم.")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("reply_to_admin_"))
+def handle_user_reply(call):
+    if is_user_banned(call.from_user.id):
+        bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
+        return
+    admin_id = ADMIN_ID
+    markup = types.InlineKeyboardMarkup()
+    cancel_button = types.InlineKeyboardButton("🚫 إلغاء", callback_data="cancel")
+    markup.add(cancel_button)
+    msg = bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text="✏️ اكتب رسالتك للإدارة:",
+        reply_markup=markup
+    )
+    bot.register_next_step_handler(msg, send_reply_to_admin, call.message.chat.id, admin_id)
+
+def send_reply_to_admin(message, user_id, admin_id):
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("رد على المستخدم", callback_data=f"send_request_{user_id}"))
+    user_info = f"اسم المستخدم: {message.from_user.first_name or 'غير معروف'}\n"
+    user_info += f"المعرف: @{message.from_user.username or 'غير متوفر'}\n"
+    user_info += f"ID: {user_id}\n"
+    user_info += f"الرسالة:\n"
+    try:
+        if message.photo:
+            bot.send_photo(admin_id, message.photo[-1].file_id, caption=user_info + (message.caption or "تم استلام رسالة من المستخدم."), reply_markup=markup)
+        elif message.document:
+            bot.send_document(admin_id, message.document.file_id, caption=user_info + (message.caption or "تم استلام رسالة من المستخدم."), reply_markup=markup)
+        elif message.text:
+            bot.send_message(admin_id, user_info + message.text, reply_markup=markup)
+
+        bot.send_message(message.chat.id, "✅ تم إرسال رسالتك للإدارة.")
+    except Exception as e:
+        logger.error(f"Error sending reply to admin: {e}")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء إرسال رسالتك للإدارة.")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_request_"))
+def request_cancellation_reason(call):
+    user_id = int(call.data.split("_")[2])
+    msg = bot.send_message(call.message.chat.id, "✏️ أدخل سبب الإلغاء:")
+    bot.register_next_step_handler(msg, cancel_order, user_id)
+
+def cancel_order(message, user_id):
+    reason = message.text
+
+    # جلب آخر معاملة
+    try:
+        try:
+            uid = int(user_id)
+        except Exception:
+            uid = user_id
+        res = supabase.table("transactions").select("amount").eq("user_id", uid).order("id", desc=True).limit(1).execute()
+        transaction = None
+        if res.data and len(res.data) > 0:
+            transaction = res.data[0]
+        logger.debug(f"Transaction fetched for user {user_id}: {transaction}")
+    except Exception as e:
+        logger.error(f"Error fetching transaction for cancel: {e}")
+        transaction = None
+
+    if transaction:
+        amount_to_refund = transaction.get("amount", 0)
+
+        update_balance(user_id, amount_to_refund)
+
+        bot.send_message(
+            user_id,
+            f"❎ تم إلغاء طلبك.\n📌 السبب: {reason}\n💰 تم إرجاع {amount_to_refund} USD إلى رصيدك."
+        )
+
+        bot.send_message(
+            message.chat.id,
+            f"✔️ تم إلغاء الطلب.\n💵 تم إرجاع {amount_to_refund} USD للمستخدم."
+        )
+    else:
+        bot.send_message(user_id, "⚠️ لم يتم العثور على أي معاملة مرتبطة بهذا الطلب.")
+
+@bot.callback_query_handler(func=lambda call: call.data == "main_menu")
+def show_main_menu(call):
+    if is_user_banned(call.from_user.id):
+        bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
+        return
+    user_id = call.message.chat.id
+    username = call.message.chat.username or "غير متوفر"
+    buttons_structure = [
+        [{"text": "🛍️ العروض", "callback_data": "show_offers"}, {"text": "💳 شحن رصيد", "callback_data": "recharge_balance"}],
+        [{"text": "ℹ️ معلومات الحساب", "callback_data": "account_info"}],
+        [{"text": "📩 التواصل مع الإدارة", "callback_data": f"reply_to_admin_{call.message.chat.id}"}]
+    ]
+    markup = create_buttons(buttons_structure)
+    try:
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=(
+                f"🎉 مرحباً بك يا {call.message.chat.first_name or 'ضيفنا العزيز'}\n في Astra Store!\n\n"
+                "🛒 اكتشف العروض المميزة.\n"
+                "💳 اشحن رصيدك بسهولة.\n"
+                "📩 تواصل معنا لأي استفسار.\n\n"
+                "🔽 اختر أحد الخيارات من القائمة أدناه للبدء:"
+            ),
+            reply_markup=markup
+        )
+    except telebot.apihelper.ApiTelegramException as e:
+        bot.answer_callback_query(call.id, "⚠️ حدث خطأ أثناء تعديل الرسالة.", show_alert=True)
+        print(f"Error editing message: {e}")
 
 @bot.callback_query_handler(func=lambda call: True)
-def callback_handler(call):
+def handle_query(call):
+    if is_user_banned(call.from_user.id):
+        bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
+        return
+    user_id = call.message.chat.id
     try:
-        data = call.data
-
-        if data == "main_menu":
-            send_main_menu(call.message.chat.id)
-
-        elif data == "offers":
-            offers = get_all_offers()
-            if not offers:
-                bot.answer_callback_query(call.id, "لا توجد عروض حالياً ❌")
+        if call.data == 'account_info':
+            username = call.message.chat.username or "غير متوفر"
+            balance = get_user_balance(user_id)
+            account_info = (
+                f"ℹ️ معلومات الحساب:\n"
+                f"👤 اسم المستخدم: @{username}\n"
+                f"🆔 معرف المستخدم: {user_id}\n"
+                f"💰 رصيد الحساب: {balance} USD\n"
+                "🔄 اشحن رصيدك للاستمتاع بخدماتنا المميزة."
+            )
+            back_button = types.InlineKeyboardMarkup(row_width=1)
+            back_button.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  text=account_info, reply_markup=back_button)
+        elif call.data == 'recharge_balance':
+            keyboard = types.InlineKeyboardMarkup(row_width=1)
+            keyboard.add(
+                types.InlineKeyboardButton("💵 USDT", callback_data='usdt'),
+                types.InlineKeyboardButton("💰 Payeer", callback_data='payeer'),
+                types.InlineKeyboardButton("💰 Syriatel Cash", callback_data='syriatelcash'),
+                types.InlineKeyboardButton("💰 Sham Cash", callback_data='shamcash'),
+            )
+            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
+            bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
+                                  text="💳 اختر وسيلة الدفع التي ترغب في استخدامها لشحن رصيدك 👇:", reply_markup=keyboard)
+        elif call.data == 'usdt':
+            if is_user_banned(call.from_user.id):
+                bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
                 return
-            markup = create_offer_buttons(offers)
-            markup.add(InlineKeyboardButton("🔙 رجوع", callback_data="main_menu"))
-            bot.edit_message_text("🎁 قائمة العروض:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-
-        elif data.startswith("offer_"):
-            offer_id = data.split("_")[1]
-            offer = fetch_offer_tuple(offer_id)
-            if not offer:
-                bot.answer_callback_query(call.id, "العرض غير موجود ❌")
-                return
-            
-            name = offer[1]
-            details = offer[5]
-            price = offer[2]
-            quantity = offer[3]
-
-            txt = (
-                f"🎁 **{name}**\n"
-                f"ℹ️ {details}\n"
-                f"💵 السعر: {price}\n"
-                f"📦 الكمية المتاحة: {quantity}"
+            keyboard = types.InlineKeyboardMarkup(row_width=1)
+            keyboard.add(
+                types.InlineKeyboardButton("💵 شبكة TRON", callback_data='network_tron'),
+                types.InlineKeyboardButton("💰 شبكة Ethereum", callback_data='network_ethereum')
             )
-
-            markup = InlineKeyboardMarkup()
-            markup.add(InlineKeyboardButton("🛒 شراء", callback_data=f"buy_{offer_id}"))
-            markup.add(InlineKeyboardButton("🔙 رجوع", callback_data="offers"))
-
+            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
+            bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
+                                  text="👇 اختر شبكة الايداع 🌐 المناسبة 👇:", reply_markup=keyboard)
+        elif call.data == 'network_tron' or call.data == 'network_ethereum':
+            network = "TRON" if call.data == 'network_tron' else "Ethereum"
+            keyboard = types.InlineKeyboardMarkup()
+            keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  text=f"✅ تم اختيار شبكة {network} 🌐.\n"
+                                        "\n"
+                                        "📥 عنوان الايداع:\n"
+                                        "\n"
+                                        "TRGQMLpJru9ReRts5UjySEYFaguRccnmFd\n"
+                                        "\n"
+                                        "⚠️ الحد الادنى للايداع 10💲.\n"
+                                        "\n"
+                                        "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
+                                        "\n"
+                                        "\n"
+                                        "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
+                                  reply_markup=keyboard)
+            bot.register_next_step_handler(call.message, handle_deposit, network)
+        elif call.data == 'cancel':
             bot.edit_message_text(
-                txt, call.message.chat.id, call.message.message_id,
-                reply_markup=markup, parse_mode="Markdown"
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text="✅ تم إلغاء العملية.",
+                reply_markup=types.InlineKeyboardMarkup().add(
+                    types.InlineKeyboardButton("🔙 رجوع إلى الواجهة الرئيسية", callback_data='main_menu')
+                )
             )
-
-        elif data.startswith("buy_"):
-            offer_id = data.split("_")[1]
-            msg = bot.send_message(call.message.chat.id, "🔢 أدخل الكمية التي تريد شراءها:")
-            bot.register_next_step_handler(msg, process_quantity, offer_id, call.from_user.id)
-
-        elif data == "balance":
-            bal = get_user_balance(call.from_user.id)
-            bot.answer_callback_query(call.id)
-            bot.edit_message_text(
-                f"💰 رصيدك الحالي: {bal}",
-                call.message.chat.id, call.message.message_id,
-                reply_markup=create_buttons([
-                    [{"text": "🔙 رجوع", "callback_data": "main_menu"}]
-                ])
-            )
-
-        elif data == "recharge":
-            msg = bot.send_message(call.message.chat.id, "💵 أدخل مبلغ الشحن:")
-            bot.register_next_step_handler(msg, process_recharge_amount)
-
+            bot.clear_step_handler(call.message)
+        elif call.data.startswith('accept_'):
+            request_id = int(call.data.split('_')[1])
+            try:
+                res = supabase.table("recharge_requests").select("user_id", "deposit_amount").eq("request_id", request_id).single().execute()
+                if res.data:
+                    user_id_req = res.data.get("user_id")
+                    deposit_amount = res.data.get("deposit_amount", 0)
+                    update_balance(user_id_req, deposit_amount)
+                    update_request_status(request_id, 'Accepted')
+                    bot.send_message(user_id_req, f"✅ تم قبول الإيداع! تم إضافة {deposit_amount} USD إلى رصيدك.")
+                    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                          text="✅ تمت معالجة الطلب بالموافقة.")
+                else:
+                    bot.send_message(call.message.chat.id, "⚠️ حدث خطأ: الطلب غير موجود.")
+            except Exception as e:
+                logger.error(f"Error accepting recharge request {request_id}: {e}")
+                bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء معالجة الطلب.")
+        elif call.data.startswith('reject_'):
+            request_id = int(call.data.split('_')[1])
+            try:
+                res = supabase.table("recharge_requests").select("user_id").eq("request_id", request_id).single().execute()
+                if res.data:
+                    user_id_req = res.data.get("user_id")
+                    update_request_status(request_id, 'Rejected')
+                    bot.send_message(user_id_req, "❎ تم رفض الإيداع. يرجى المحاولة مرة أخرى.")
+                    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                          text="❎ تمت معالجة الطلب بالرفض.")
+                else:
+                    bot.send_message(call.message.chat.id, "⚠️ حدث خطأ: الطلب غير موجود.")
+            except Exception as e:
+                logger.error(f"Error rejecting recharge request {request_id}: {e}")
+                bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء معالجة الطلب.")
     except Exception as e:
-        logger.error(f"Callback error: {e}")
+        logger.error(f"Error in handle_query: {e}")
 
-# ------------------ RECHARGE ------------------
-
-def process_recharge_amount(message):
+def handle_deposit(message, network):
     try:
-        amount = float(message.text)
-        if amount <= 0:
-            bot.send_message(message.chat.id, "⚠️ المبلغ يجب أن يكون أكبر من 0.")
-            return
+        deposit_amount = float(message.text)
+        bot.send_message(message.chat.id, "من فضلك أرسل رقم المعاملة (TxId) 🆔 او لقطة شاشة لمعاملة الايداع 🖼️:")
+        bot.register_next_step_handler(message, handle_transaction, deposit_amount, network)
+    except ValueError:
+        bot.send_message(message.chat.id, "⚠️ الرجاء إدخال رقم صحيح.")
+        bot.register_next_step_handler(message, handle_deposit, network)
 
-        msg = bot.send_message(message.chat.id, "🧾 أدخل رقم عملية الدفع (Transaction ID):")
-        bot.register_next_step_handler(msg, process_recharge_transaction, amount)
-
-    except:
-        bot.send_message(message.chat.id, "⚠️ الرجاء إدخال مبلغ صحيح.")
-
-def process_recharge_transaction(message, amount):
+def handle_transaction(message, deposit_amount, network):
     transaction_id = message.text
-    user_id = message.from_user.id
-
-    req_id = add_recharge_request(user_id, amount, transaction_id)
-    if req_id:
-        bot.send_message(message.chat.id, "⏳ تم إرسال طلب الشحن للإدارة.\nسيتم الرد قريباً.")
-        bot.send_message(ADMIN_ID, f"📥 طلب شحن جديد:\n\n👤 المستخدم: {user_id}\n💵 المبلغ: {amount}\n🔖 رقم العملية: {transaction_id}\n🆔 رقم الطلب: {req_id}")
+    request_id = add_recharge_request(message.chat.id, deposit_amount, transaction_id)
+    if request_id:
+        back_button = types.InlineKeyboardMarkup(row_width=1)
+        back_button.add(types.InlineKeyboardButton("🔙 رجوع إلى الواجهة الرئيسية", callback_data='main_menu'))
+        bot.send_message(message.chat.id, f"✅ تم إرسال طلبك لشحن رصيد {deposit_amount} USD عبر شبكة {network} 🌐.",
+                         reply_markup=back_button)
+        send_to_admin(request_id, message.chat.id, deposit_amount, transaction_id, network, message)
     else:
-        bot.send_message(message.chat.id, "❌ حدث خطأ أثناء إرسال طلب الشحن.")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء معالجة طلبك. يرجى المحاولة لاحقًا.")
 
-# ------------------ RUN ------------------
+def send_to_admin(request_id, user_id, deposit_amount, transaction_id, network, message):
+    try:
+        user = bot.get_chat(user_id)
+        admin_message = (
+            f"طلب شحن جديد:\n"
+            f"المستخدم: @{user.username}\n"
+            f"المعرف: {user_id}\n"
+            f"المبلغ: {deposit_amount} USD\n"
+            f"رقم المعاملة: {transaction_id}\n"
+            f"الشبكة: {network}\n"
+        )
+        if message.photo:
+            bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=admin_message)
+        else:
+            bot.send_message(ADMIN_ID, admin_message)
+        keyboard = types.InlineKeyboardMarkup(row_width=2)
+        keyboard.add(
+            types.InlineKeyboardButton("قبول", callback_data=f'accept_{request_id}'),
+            types.InlineKeyboardButton("رفض", callback_data=f'reject_{request_id}')
+        )
+        bot.send_message(ADMIN_ID, "اختر ما إذا كنت ترغب في قبول أو رفض الطلب.", reply_markup=keyboard)
+    except Exception as e:
+        logger.error(f"Error sending to admin: {e}")
 
-def run_bot():
-    while True:
-        try:
-            bot.polling(none_stop=True)
-        except Exception as e:
-            logger.error(f"Bot polling error: {e}")
-            time.sleep(3)
+@bot.message_handler(commands=['add_offer'])
+def add_offer(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "هذا الأمر مخصص للأدمن فقط!")
+        return
+    msg = bot.send_message(message.chat.id, "✏️ أدخل اسم العرض:")
+    bot.register_next_step_handler(msg, get_offer_name)
 
-if __name__ == "__main__":
-    run_bot()
+def get_offer_name(message):
+    name = message.text.strip()
+    if not name:
+        bot.send_message(message.chat.id, "⚠️ اسم العرض لا يمكن أن يكون فارغًا.")
+        return
+    msg = bot.send_message(message.chat.id, "✏️ أدخل تفاصيل العرض:")
+    bot.register_next_step_handler(msg, get_offer_details, name)
+
+def get_offer_details(message, name):
+    details = message.text.strip()
+    if not details:
+        bot.send_message(message.chat.id, "⚠️ تفاصيل العرض لا يمكن أن تكون فارغة.")
+        return
+    msg = bot.send_message(message.chat.id, "✏️ أدخل سعر العرض:")
+    bot.register_next_step_handler(msg, get_offer_price, name, details)
+
+def get_offer_price(message, name, details):
+    try:
+        price = float(message.text.strip())
+        if price <= 0:
+            bot.send_message(message.chat.id, "⚠️ يجب أن يكون السعر أكبر من صفر.")
+            return
+        msg = bot.send_message(message.chat.id, "✏️ أدخل الكمية المتاحة:")
+        bot.register_next_step_handler(msg, get_offer_quantity, name, details, price)
+    except ValueError:
+        bot.send_message(message.chat.id, "⚠️ أدخل رقمًا صحيحًا للسعر.")
+
+def get_offer_quantity(message, name, details, price):
+    try:
+        quantity = int(message.text.strip())
+        if quantity <= 0:
+            bot.send_message(message.chat.id, "⚠️ الكمية يجب أن تكون أكبر من صفر.")
+            return
+        msg = bot.send_message(message.chat.id, "📂 أدخل قسم العرض (مثال: شحن ألعاب، تطبيقات، بطاقات):")
+        bot.register_next_step_handler(msg, get_offer_category, name, details, price, quantity)
+    except ValueError:
+        bot.send_message(message.chat.id, "✏️ أدخل رقمًا صحيحًا للكمية.")
+
+def get_offer_category(message, name, details, price, quantity):
+    category = message.text.strip()
+    if not category:
+        bot.send_message(message.chat.id, "⚠️ لا يمكن ترك القسم فارغًا.")
+        return
+    msg = bot.send_message(message.chat.id, "🖼️ أرسل صورة العرض (اختياري):")
+    bot.register_next_step_handler(msg, get_offer_image, name, details, price, quantity, category)
+
+def get_offer_image(message, name, details, price, quantity, category):
+    image = message.photo[-1].file_id if message.photo else None
+    try:
+        supabase.table("offers").insert({
+            "name": name,
+            "details": details,
+            "price": price,
+            "quantity": quantity,
+            "category": category,
+            "image": image
+        }).execute()
+        bot.send_message(message.chat.id, "✅ تم إضافة العرض بنجاح مع القسم.")
+    except Exception as e:
+        logger.error(f"Error adding offer: {e}")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء إضافة العرض. يرجى المحاولة لاحقًا.")
+
+@bot.message_handler(commands=['show_users'])
+def show_users(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "🚫 هذا الأمر مخصص للأدمن فقط!")
+        return
+    try:
+        res = supabase.table("users").select("user_id", "username", "balance").execute()
+        users = res.data or []
+        if not users:
+            bot.send_message(message.chat.id, "❌ لا يوجد مستخدمون في قاعدة البيانات.")
+            return
+        user_count = len(users)
+        response = f"عدد المستخدمين: {user_count}\n\n"
+        for u in users:
+            user_id = u.get("user_id")
+            username = u.get("username")
+            balance = u.get("balance") or 0
+            response += (f"معرف المستخدم: {user_id}\n"
+                         f"اسم المستخدم: {username if username else 'غير متوفر'}\n"
+                         f"الرصيد: {balance:.2f}\n"
+                         "--------------------------\n")
+        if len(response) > 4096:
+            for i in range(0, len(response), 4096):
+                bot.send_message(message.chat.id, response[i:i+4096])
+        else:
+            bot.send_message(message.chat.id, response)
+    except Exception as e:
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء استرداد بيانات المستخدمين.")
+        logger.error(f"Error fetching users: {e}")
+
+@bot.message_handler(commands=['update_balance'])
+def update_user_balance(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "🚫 هذا الأمر مخصص للأدمن فقط!")
+        return
+    msg = bot.send_message(message.chat.id, "✏️ أدخل معرف المستخدم والمبلغ (استخدام التنسيق: user_id amount).\n"
+                                            "مثال: 123456789 50 لإضافة 50، أو 123456789 -30 لخصم 30.")
+    bot.register_next_step_handler(msg, process_balance_update)
+
+def process_balance_update(message):
+    try:
+        user_input = message.text.split()
+        if len(user_input) != 2:
+            bot.send_message(message.chat.id, "⚠️ صيغة الإدخال غير صحيحة. يرجى المحاولة مجددًا.")
+            return
+        user_id = int(user_input[0])
+        amount = float(user_input[1])
+        # تحديث الرصيد
+        res = supabase.table("users").select("balance").eq("user_id", user_id).single().execute()
+        user = res.data
+        if not user:
+            bot.send_message(message.chat.id, f"❎ المستخدم بمعرف {user_id} غير موجود.")
+            return
+        new_balance = (user.get("balance") or 0) + amount
+        if new_balance < 0:
+            bot.send_message(message.chat.id, f"❌ لا يمكن خصم {abs(amount):.2f} لأن الرصيد الحالي ({user.get('balance',0):.2f}) لا يكفي.")
+            return
+        supabase.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
+        bot.send_message(message.chat.id, f"✅ تم تحديث الرصيد بنجاح.\nالرصيد الجديد للمستخدم {user_id}: {new_balance:.2f}")
+    except ValueError:
+        bot.send_message(message.chat.id, "⚠️ يرجى التأكد من إدخال المعرف والمبلغ بشكل صحيح.")
+    except Exception as e:
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء تحديث الرصيد. يرجى المحاولة لاحقًا.")
+        logger.error(f"Error updating balance: {e}")
+
+@bot.message_handler(commands=['send_message'])
+def send_message_to_user(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "🚫 هذا الأمر مخصص للأدمن فقط!")
+        return
+    msg = bot.send_message(message.chat.id, "✏️ أدخل معرف المستخدم والرسالة (استخدام التنسيق: user_id message).\n"
+                                            "مثال: 123456789 مرحبًا، هذا اختبار.")
+    bot.register_next_step_handler(msg, process_message_to_user)
+
+def process_message_to_user(message):
+    try:
+        user_input = message.text.split(maxsplit=1)
+        if len(user_input) != 2:
+            bot.send_message(message.chat.id, "⚠️ صيغة الإدخال غير صحيحة. يرجى المحاولة مجددًا.")
+            return
+        user_id = int(user_input[0])
+        user_message = user_input[1]
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("رد على الإدارة 📩", callback_data=f"reply_to_admin_{message.chat.id}"))
+        bot.send_message(user_id, user_message, reply_markup=markup)
+        bot.send_message(message.chat.id, f"✅ تم إرسال الرسالة إلى المستخدم {user_id}.")
+    except ValueError:
+        bot.send_message(message.chat.id, "⚠️ يرجى التأكد من إدخال المعرف والرسالة بشكل صحيح.")
+    except telebot.apihelper.ApiTelegramException as e:
+        bot.send_message(message.chat.id, f"⚠️ حدث خطأ أثناء إرسال الرسالة: {e}")
+
+@bot.message_handler(commands=['ban_user'])
+def ban_user(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "هذا الأمر مخصص للأدمن فقط!")
+        return
+    msg = bot.send_message(message.chat.id, "أدخل معرف المستخدم الذي تريد حظره:")
+    bot.register_next_step_handler(msg, process_ban_user)
+
+def process_ban_user(message):
+    try:
+        user_id = int(message.text)
+        supabase.table("banned_users").insert({"user_id": user_id}).execute()
+        bot.send_message(message.chat.id, f"تم حظر المستخدم {user_id}.")
+    except ValueError:
+        bot.send_message(message.chat.id, "يرجى إدخال معرف مستخدم صحيح.")
+    except Exception as e:
+        bot.send_message(message.chat.id, "حدث خطأ أثناء حظر المستخدم.")
+        logger.error(f"Error banning user: {e}")
+
+@bot.message_handler(commands=['unban_user'])
+def unban_user(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "🚫 هذا الأمر مخصص للأدمن فقط!")
+        return
+    msg = bot.send_message(message.chat.id, "أدخل معرف المستخدم الذي تريد إلغاء حظره:")
+    bot.register_next_step_handler(msg, process_unban_user)
+
+def process_unban_user(message):
+    try:
+        user_id = int(message.text)
+        supabase.table("banned_users").delete().eq("user_id", user_id).execute()
+        bot.send_message(message.chat.id, f"✅ تم إلغاء حظر المستخدم {user_id}. يمكنه الآن استخدام البوت.")
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ يرجى إدخال معرف مستخدم صحيح.")
+    except Exception as e:
+        bot.send_message(message.chat.id, "❌ حدث خطأ أثناء إلغاء حظر المستخدم.")
+        logger.error(f"Error unbanning user: {e}")
+
+@bot.message_handler(commands=['get_banned_users'])
+def get_banned_users(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "هذا الأمر مخصص للأادمن فقط!")
+        return
+    try:
+        res = supabase.table("banned_users").select("user_id").execute()
+        banned_users = res.data or []
+        if banned_users:
+            banned_users_list = "\n".join([f"معرف المستخدم: {d.get('user_id')}" for d in banned_users])
+            bot.send_message(message.chat.id, f"قائمة المستخدمين المحظورين:\n{banned_users_list}")
+        else:
+            bot.send_message(message.chat.id, "لا يوجد مستخدمين محظورين حتى الآن.")
+        logging.basicConfig(level=logging.DEBUG)
+        logger = logging.getLogger(__name__)
+    except Exception as e:
+        logger.error(f"Error getting banned users: {e}")
+        bot.send_message(message.chat.id, "حدث خطأ أثناء استرجاع قائمة المحظورين.")
+
+# ------------------ Entry point ------------------
+if __name__ == '__main__':
+    # Optionally print initial state of offers
+    try:
+        check_offers_in_db()
+    except Exception:
+        pass
+
+    bot.polling(none_stop=True, interval=0, timeout=20, long_polling_timeout=60)
+    time.sleep(15)
