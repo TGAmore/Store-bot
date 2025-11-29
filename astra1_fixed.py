@@ -1056,12 +1056,21 @@ def get_banned_users(message):
         bot.send_message(message.chat.id, "حدث خطأ أثناء استرجاع قائمة المحظورين.")
 
 # ------------------ Entry point ------------------
-if __name__ == '__main__':
-    # Optionally print initial state of offers
-    try:
-        check_offers_in_db()
-    except Exception:
-        pass
+from flask import Flask, request
 
-    bot.polling(none_stop=True, interval=0, timeout=20, long_polling_timeout=60)
-    time.sleep(15)
+app = Flask(__name__)
+
+WEBHOOK_URL = "https://55b759a2-3c10-4094-956e-28b1bda51207-dev.e1-eu-west-cdp.choreoapis.dev/astrastorebot/store-bot/v1.0/webhook"
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    json_data = request.get_json(force=True)
+    update = telebot.types.Update.de_json(json_data)
+    bot.process_new_updates([update])
+    return "OK", 200
+
+if __name__ == "__main__":
+    bot.remove_webhook()
+    time.sleep(1)
+    bot.set_webhook(url=WEBHOOK_URL)
+    app.run(host="0.0.0.0", port=8080)
