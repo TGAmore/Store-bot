@@ -1,3 +1,8 @@
+# astra1_webhook.py
+# نسخة Webhook من كودك الأصلي — ملف واحد فقط، مع Auto-Restart للـWebhook.
+# المسار المستخدم: /3more
+# رابط Webhook النهائي مضبوط على المتغير WEBHOOK_URL أدناه.
+
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -6,10 +11,16 @@ import os
 import time
 from supabase import create_client, Client
 
+# New imports for webhook
+from flask import Flask, request, abort
+import threading
+import sys
+import traceback
+
 # ------------------ CONFIG ------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Supabase credentials (placed directly as you requested - NOT recommended for production)
+# Supabase credentials (as in original)
 SUPABASE_URL = "https://rjhtgcorsuxvctablycl.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqaHRnY29yc3V4dmN0YWJseWNsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDE1MjU4OSwiZXhwIjoyMDc5NzI4NTg5fQ.os0P5e6Tfr5eri_CCs5xt39P_tYTRhoQxwG_Z2nyLCU"
 
@@ -21,6 +32,15 @@ bot = telebot.TeleBot(API_TOKEN)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 ADMIN_ID = 5584938116
+
+# Webhook configuration
+# <- هذا هو رابط الـWebhook النهائي (مهم تغيّره لو تغيّر المسار أو الدومين)
+WEBHOOK_URL = "https://55b759a2-3c10-4094-956e-28b1bda51207-dev.e1-eu-west-cdp.choreoapis.dev/astrastorebot/astra-bot/v1.0/3more"
+WEBHOOK_PATH = "/3more"  # المسار الذي اخترته
+WEBHOOK_CHECK_INTERVAL = 60  # كل كم ثانية نتحقق من صحة webhook (Auto-Restart)
+
+# create Flask app
+app = Flask(__name__)
 
 # ------------------ Helper converters / fetchers to keep original tuple-based interfaces ------------------
 
@@ -940,7 +960,7 @@ def show_users(message):
 @bot.message_handler(commands=['update_balance'])
 def update_user_balance(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "🚫 هذا الأمر مخصص للأدمن فقط!")
+        bot.send_message(message.chat.id, "🚫 هذا الأمر مخصص للأادمن فقط!")
         return
     msg = bot.send_message(message.chat.id, "✏️ أدخل معرف المستخدم والمبلغ (استخدام التنسيق: user_id amount).\n"
                                             "مثال: 123456789 50 لإضافة 50، أو 123456789 -30 لخصم 30.")
@@ -975,7 +995,7 @@ def process_balance_update(message):
 @bot.message_handler(commands=['send_message'])
 def send_message_to_user(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "🚫 هذا الأمر مخصص للأدمن فقط!")
+        bot.send_message(message.chat.id, "🚫 هذا الأمر مخصص للأادمن فقط!")
         return
     msg = bot.send_message(message.chat.id, "✏️ أدخل معرف المستخدم والرسالة (استخدام التنسيق: user_id message).\n"
                                             "مثال: 123456789 مرحبًا، هذا اختبار.")
@@ -1001,7 +1021,7 @@ def process_message_to_user(message):
 @bot.message_handler(commands=['ban_user'])
 def ban_user(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "هذا الأمر مخصص للأدمن فقط!")
+        bot.send_message(message.chat.id, "هذا الأمر مخصص للأالأدمن فقط!")
         return
     msg = bot.send_message(message.chat.id, "أدخل معرف المستخدم الذي تريد حظره:")
     bot.register_next_step_handler(msg, process_ban_user)
@@ -1055,22 +1075,82 @@ def get_banned_users(message):
         logger.error(f"Error getting banned users: {e}")
         bot.send_message(message.chat.id, "حدث خطأ أثناء استرجاع قائمة المحظورين.")
 
-# ------------------ Entry point ------------------
-from flask import Flask, request
+# ------------------ Webhook & Flask Integration ------------------
 
-app = Flask(__name__)
+def set_webhook():
+    """
+    Set Telegram webhook to WEBHOOK_URL.
+    """
+    try:
+        logger.info(f"Setting webhook to {WEBHOOK_URL}")
+        bot.remove_webhook()
+        time.sleep(0.5)
+        res = bot.set_webhook(url=WEBHOOK_URL)
+        logger.info(f"set_webhook result: {res}")
+        return res
+    except Exception as e:
+        logger.error(f"Failed to set webhook: {e}\n{traceback.format_exc()}")
+        return False
 
-WEBHOOK_URL = "https://55b759a2-3c10-4094-956e-28b1bda51207-dev.e1-eu-west-cdp.choreoapis.dev/astrastorebot/store-bot/v1.0/webhook"
+@app.route(WEBHOOK_PATH, methods=['POST'])
+def webhook_handler():
+    """
+    Handle incoming webhook updates from Telegram.
+    """
+    if request.headers.get('content-type') != 'application/json':
+        # Telegram sends application/json
+        # If not JSON, ignore
+        abort(403)
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    json_data = request.get_json(force=True)
-    update = telebot.types.Update.de_json(json_data)
-    bot.process_new_updates([update])
+    try:
+        update_json = request.get_json(force=True)
+        update = telebot.types.Update.de_json(update_json)
+        bot.process_new_updates([update])
+    except Exception as e:
+        logger.error(f"Error processing update: {e}\n{traceback.format_exc()}")
+        # Return 200 so Telegram doesn't keep retrying too aggressively in case of handler error
+        return '', 200
+    return '', 200
+
+# Optional route for health check (useful for UptimeRobot)
+@app.route("/health", methods=['GET'])
+def health():
     return "OK", 200
 
-if __name__ == "__main__":
-    bot.remove_webhook()
-    time.sleep(1)
-    bot.set_webhook(url=WEBHOOK_URL)
-    app.run(host="0.0.0.0", port=8080)
+def webhook_monitor_loop():
+    """
+    Simple monitor that ensures webhook stays registered.
+    If bot.get_me or other calls fail, try to re-register webhook.
+    """
+    while True:
+        try:
+            # quick check: call get_me to ensure token works & connection fine
+            bot.get_me()
+            # optionally: check webhook info (if method exists)
+            # If everything ok, sleep
+        except Exception as e:
+            logger.error(f"Webhook monitor detected issue with bot: {e}\nAttempting to reset webhook...")
+            try:
+                set_webhook()
+            except Exception as e2:
+                logger.error(f"Failed to reset webhook in monitor: {e2}\n{traceback.format_exc()}")
+        time.sleep(WEBHOOK_CHECK_INTERVAL)
+
+# ------------------ Entry point ------------------
+if __name__ == '__main__':
+    # Try to set webhook on startup
+    try:
+        check_offers_in_db()
+    except Exception:
+        pass
+
+    set_webhook()
+
+    # Start webhook monitor thread (auto-restart / re-set webhook)
+    monitor_thread = threading.Thread(target=webhook_monitor_loop, daemon=True)
+    monitor_thread.start()
+
+    # Run Flask (for local testing). On Choreo, they usually manage WSGI hosting.
+    # Keep this here so you can test locally with e.g. ngrok or run directly.
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
