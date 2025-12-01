@@ -1065,11 +1065,8 @@ def edit_address_start(call):
     method = call.data.replace("editaddr_", "")  # tron / eth / syriatel / sham
 
     msg = bot.send_message(call.message.chat.id, f"✏️ أدخل العنوان الجديد لـ {method}:")
-    
-    bot.clear_step_handler(call.message)  # مهم لمنع التعارض
+
     bot.register_next_step_handler(msg, save_new_address, method)
-
-
 
 def save_new_address(message, method):
     new_value = message.text.strip()
