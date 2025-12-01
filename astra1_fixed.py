@@ -251,12 +251,9 @@ def display_offer_details(call):
         return bot.send_message(call.message.chat.id, "⚠️ لم يتم العثور على العرض.")
 
     text = (
-        f"📌 اسم العرض: {offer[1]}
-"
-        f"📝 التفاصيل: {offer[5]}
-"
-        f"💲 السعر: {offer[2]}
-"
+        f"📌 اسم العرض: {offer[1]}"
+        f"📝 التفاصيل: {offer[5]}"
+        f"💲 السعر: {offer[2]}"
         f"📦 الكمية المتاحة: {offer[3]}"
     )
 
@@ -418,9 +415,7 @@ def process_quantity(message, offer_id, user_id):
 
     bot.send_message(
         message.chat.id,
-        f"✅ تمت عملية الشراء بنجاح!
-💵 المبلغ المخصوم: {total_price}
-📦 الكمية: {quantity}",
+        f"✅ تمت عملية الشراء بنجاح! 💵 المبلغ المخصوم: {total_price} 📦 الكمية: {quantity}",
         reply_markup=markup
     )
 
@@ -438,14 +433,10 @@ def notify_admin_for_delivery(user_id, offer, quantity):
 
     bot.send_message(
         ADMIN_ID,
-        f"📩 طلب جديد من المستخدم {user_id}
-"
-        f"اسم العرض: {offer[1]}
-"
-        f"السعر: {offer[2]}
-"
-        f"الكمية المطلوبة: {quantity}
-"
+        f"📩 طلب جديد من المستخدم {user_id}"
+        f"اسم العرض: {offer[1]}"
+        f"السعر: {offer[2]}"
+        f"الكمية المطلوبة: {quantity}"
         f"الكمية المتبقية: {offer[3]}",
         reply_markup=markup
     )
@@ -503,16 +494,11 @@ def send_reply_to_admin(message, user_id, admin_id):
     markup.add(InlineKeyboardButton("رد على المستخدم", callback_data=f"send_request_{user_id}"))
 
     user_info = (
-        f"📩 رسالة جديدة من المستخدم:
-"
-        f"👤 الاسم: {message.from_user.first_name}
-"
-        f"@{message.from_user.username}
-"
-        f"ID: {user_id}
-"
-        f"الرسالة:
-"
+        f"📩 رسالة جديدة من المستخدم:"
+        f"👤 الاسم: {message.from_user.first_name}"
+        f"@{message.from_user.username}"
+        f"ID: {user_id}"
+        f"الرسالة:"
     )
 
     try:
@@ -601,10 +587,8 @@ def show_main_menu(call):
             chat_id=user_id,
             message_id=call.message.message_id,
             text=(
-                f"🎉 مرحباً {call.message.chat.first_name}!
-"
-                "🛒 اختر من القائمة التالية:
-"
+                f"🎉 مرحباً {call.message.chat.first_name}!"
+                "🛒 اختر من القائمة التالية:"
                 "💳 شحن — عروض — دعم"
             ),
             reply_markup=markup
@@ -622,12 +606,9 @@ def account_info(call):
     username = call.message.chat.username or "غير متوفر"
 
     text = (
-        f"ℹ️ معلومات الحساب:
-"
-        f"👤 المستخدم: @{username}
-"
-        f"🆔 ID: {call.message.chat.id}
-"
+        f"ℹ️ معلومات الحساب:"
+        f"👤 المستخدم: @{username}"
+        f"🆔 ID: {call.message.chat.id}"
         f"💰 الرصيد: {balance} USD"
     )
 
