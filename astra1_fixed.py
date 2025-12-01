@@ -1033,47 +1033,65 @@ def save_usd_rate(message):
         bot.send_message(message.chat.id, "⚠️ الرجاء إدخال رقم صحيح.")
 
 
+# =========================
+# تعديل عناوين الإيداع
+# =========================
+
 @bot.message_handler(commands=['set_address'])
 def set_address(message):
     if message.from_user.id != ADMIN_ID:
         return bot.send_message(message.chat.id, "🚫 هذا الأمر للأدمن فقط")
+
     keyboard = types.InlineKeyboardMarkup()
     keyboard.add(
         types.InlineKeyboardButton("USDT TRON", callback_data="editaddr_tron"),
         types.InlineKeyboardButton("USDT ETH", callback_data="editaddr_eth")
     )
     keyboard.add(
-        types.InlineKeyboardButton("Syriatel", callback_data="editaddr_syriatel"),
+        types.InlineKeyboardButton("Syriatel Cash", callback_data="editaddr_syriatel"),
         types.InlineKeyboardButton("Sham Cash", callback_data="editaddr_sham")
     )
-    bot.send_message(message.chat.id, "اختر الوسيلة التي تريد تعديل عنوانها:", reply_markup=keyboard)
+
+    bot.send_message(message.chat.id, "اختر وسيلة الدفع التي تريد تعديل عنوانها:", reply_markup=keyboard)
+
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("editaddr_"))
 def edit_address_start(call):
     if call.from_user.id != ADMIN_ID:
-        bot.answer_callback_query(call.id, "⚠️ هذا الأمر مخصص للأدمن فقط!", show_alert=True)
+        bot.answer_callback_query(call.id, "🚫 الأمر للأدمن!", show_alert=True)
         return
-    method = call.data.replace("editaddr_", "")
+
+    method = call.data.replace("editaddr_", "")  # tron / eth / syriatel / sham
+
     msg = bot.send_message(call.message.chat.id, f"✏️ أدخل العنوان الجديد لـ {method}:")
+    
+    bot.clear_step_handler(call.message)  # مهم لمنع التعارض
     bot.register_next_step_handler(msg, save_new_address, method)
+
 
 
 def save_new_address(message, method):
     new_value = message.text.strip()
-    keys = {
+
+    key_map = {
         "tron": "tron_address",
         "eth": "eth_address",
         "syriatel": "syriatel_number",
         "sham": "shamcash_code"
     }
-    key = keys.get(method)
 
+    key = key_map.get(method)
     if not key:
-        return bot.send_message(message.chat.id, "❌ خطأ داخلي!")
+        return bot.send_message(message.chat.id, "❌ خطأ داخلي (key not found)!")
 
     set_setting(key, new_value)
-    bot.send_message(message.chat.id, f"✅ تم تحديث عنوان {method} بنجاح!")
+
+    bot.send_message(
+        message.chat.id,
+        f"✅ تم تحديث عنوان {method} بنجاح!\n📌 القيمة الجديدة:\n{new_value}"
+    )
+
 
 @bot.message_handler(commands=['show_users'])
 def show_users(message):
