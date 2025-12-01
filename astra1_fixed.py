@@ -1068,10 +1068,13 @@ def save_new_address(message, method):
         "sham": "shamcash_code"
     }
     key = keys.get(method)
+
     if not key:
         return bot.send_message(message.chat.id, "❌ خطأ داخلي!")
+
     set_setting(key, new_value)
     bot.send_message(message.chat.id, f"✅ تم تحديث عنوان {method} بنجاح!")
+
 @bot.message_handler(commands=['show_users'])
 def show_users(message):
     if message.from_user.id != ADMIN_ID:
