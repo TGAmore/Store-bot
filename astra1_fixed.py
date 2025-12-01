@@ -793,14 +793,18 @@ def handle_query(call):
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
         elif call.data == 'shamcash':
-        keyboard = types.InlineKeyboardMarkup(row_width=1)
-            keyboard.add(
-                types.InlineKeyboardButton("💵 دولار", callback_data='sham_dollar'),
-                types.InlineKeyboardButton("💰 سوري", callback_data='sham_syrian')
-            )
-            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
-            bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
-                                  text="👇 اختر عملة التحويل 🌐 المناسبة 👇:", reply_markup=keyboard)
+    keyboard = types.InlineKeyboardMarkup(row_width=1)
+    keyboard.add(
+        types.InlineKeyboardButton("💵 دولار", callback_data='sham_dollar'),
+        types.InlineKeyboardButton("💰 سوري", callback_data='sham_syrian')
+    )
+    keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=call.message.message_id,
+        text="👇 اختر عملة التحويل 🌐 المناسبة 👇:",
+        reply_markup=keyboard
+    )
         elif call.data == 'sham_dollar':
             network = "Sham Cash Dollar"
             keyboard = types.InlineKeyboardMarkup()
