@@ -747,7 +747,7 @@ def handle_query(call):
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
         elif call.data == 'shamcash':
-        network = "Sham Cash"
+        network = "ShamCash"
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
@@ -766,7 +766,7 @@ def handle_query(call):
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
         elif call.data == 'syriatelcash':
-        network = "Syriatel Cash"
+        network = "SyriatelCash"
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
