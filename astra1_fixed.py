@@ -168,8 +168,7 @@ def start(message):
 
     bot.send_message(
         user_id,
-        f"🎉 مرحباً {message.from_user.first_name}!
-اختر من القائمة أدناه:",
+        f"🎉 مرحباً {message.from_user.first_name}!اختر من القائمة أدناه:",
         reply_markup=markup
     )
 
