@@ -107,7 +107,7 @@ def get_connection():
     return supabase, None
 
 def record_transaction(user_id, offer_id, amount):
-    """Ø³Ø¬Ù„ Ø§Ù„Ù…Ø¹Ø§Ù…Ù„Ø© ÙÙŠ Ø¬Ø¯ÙˆÙ„ transactions."""
+    """سجل المعاملة في جدول transactions."""
     try:
         user_id = int(user_id)
         offer_id = int(offer_id)
@@ -166,7 +166,7 @@ def get_user_balance(user_id):
     try:
         res = supabase.table("users").select("*").eq("user_id", user_id).execute()
 
-        # Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯ â†’ Ø¥Ù†Ø´Ø§Ø¤Ù‡
+        # المستخدم غير موجود → إنشاؤه
         if not res.data:
             supabase.table("users").insert({
                 "user_id": user_id,
@@ -194,7 +194,7 @@ def update_balance(user_id, amount):
     except Exception as e:
         logger.error(f"Error updating balance for {user_id}: {e}")
         try:
-            bot.send_message(user_id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ ØªØ­Ø¯ÙŠØ« Ø±ØµÙŠØ¯Ùƒ. ÙŠØ±Ø¬Ù‰ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù„Ø§Ø­Ù‚Ù‹Ø§.")
+            bot.send_message(user_id, "⚠️ حدث خطأ أثناء تحديث رصيدك. يرجى المحاولة لاحقًا.")
         except Exception:
             # ignore sending errors
             pass
@@ -205,8 +205,8 @@ def add_recharge_request(user_id, deposit_amount, transaction_id):
     except:
         pass
 
-    # Ø£Ù‡Ù… ØªØ¹Ø¯ÙŠÙ„:
-    update_user(user_id, None)   # Ø¶Ù…Ø§Ù† Ø£Ù† Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ù…ÙˆØ¬ÙˆØ¯ Ù‚Ø¨Ù„ Ø§Ù„Ø¥ÙŠØ¯Ø§Ø¹
+    # أهم تعديل:
+    update_user(user_id, None)   # ضمان أن المستخدم موجود قبل الإيداع
 
     try:
         res = supabase.table("recharge_requests").insert({
@@ -269,58 +269,58 @@ def check_offers_in_db():
         res = supabase.table("offers").select("*").execute()
         offers = res.data
         if offers:
-            print(f"Ø¹Ø¯Ø¯ Ø§Ù„Ø¹Ø±ÙˆØ¶ Ø§Ù„Ù…ÙˆØ¬ÙˆØ¯Ø© ÙÙŠ Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª: {len(offers)}")
+            print(f"عدد العروض الموجودة في قاعدة البيانات: {len(offers)}")
             for d in offers:
                 print(d)
         else:
-            print("Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¹Ø±ÙˆØ¶ ÙÙŠ Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª.")
+            print("لا توجد عروض في قاعدة البيانات.")
     except Exception as e:
-        print(f"Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ ÙØ­Øµ Ø§Ù„Ø¹Ø±ÙˆØ¶: {e}")
+        print(f"حدث خطأ أثناء فحص العروض: {e}")
 
 def process_quantity(message, offer_index, user_id):
     try:
         quantity = int(message.text)
 
-        # Ø¬Ù„Ø¨ Ø§Ù„Ø¹Ø±Ø¶
+        # جلب العرض
         offer = fetch_offer_tuple(offer_index)
 
         if offer is None:
-            bot.send_message(message.chat.id, "ðŸš« Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø¹Ø«ÙˆØ± Ø¹Ù„Ù‰ Ø§Ù„Ø¹Ø±Ø¶.")
+            bot.send_message(message.chat.id, "🚫 لم يتم العثور على العرض.")
             return
 
         if quantity <= 0:
-            bot.send_message(message.chat.id, "âš ï¸ Ø§Ù„ÙƒÙ…ÙŠØ© ÙŠØ¬Ø¨ Ø£Ù† ØªÙƒÙˆÙ† Ø£ÙƒØ¨Ø± Ù…Ù† ØµÙØ±.")
+            bot.send_message(message.chat.id, "⚠️ الكمية يجب أن تكون أكبر من صفر.")
             return
 
         if quantity > (offer[3] or 0):
-            bot.send_message(message.chat.id, f"âš ï¸ Ø¹Ø°Ø±Ø§Ù‹ØŒ Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ù…Ø·Ù„ÙˆØ¨Ø© Ø£ÙƒØ¨Ø± Ù…Ù† Ø§Ù„Ù…ØªØ§Ø­Ø©. Ø§Ù„Ù…ØªØ§Ø­: {offer[3]} ðŸ“¦")
+            bot.send_message(message.chat.id, f"⚠️ عذراً، الكمية المطلوبة أكبر من المتاحة. المتاح: {offer[3]} 📦")
             return
 
         total_price = (offer[2] or 0) * quantity
         balance = get_user_balance(user_id)
 
         if balance < total_price:
-            bot.send_message(message.chat.id, "âš ï¸ Ø±ØµÙŠØ¯Ùƒ ØºÙŠØ± ÙƒØ§ÙÙ Ù„Ø¥ØªÙ…Ø§Ù… Ø§Ù„Ø¹Ù…Ù„ÙŠØ©!")
+            bot.send_message(message.chat.id, "⚠️ رصيدك غير كافٍ لإتمام العملية!")
             return
 
-        # Ø®ØµÙ… Ø§Ù„Ø±ØµÙŠØ¯
+        # خصم الرصيد
         update_balance(user_id, -total_price)
 
-        # ØªØ­Ø¯ÙŠØ« Ø§Ù„ÙƒÙ…ÙŠØ©
+        # تحديث الكمية
         try:
             supabase.table("offers").update({"quantity": (offer[3] or 0) - quantity}).eq("id", int(offer_index)).execute()
         except Exception as e:
             logger.error(f"Error updating offer quantity {offer_index}: {e}")
 
-        # Ø­ÙØ¸ Ø§Ù„Ø¹Ù…Ù„ÙŠØ©
+        # حفظ العملية
         record_transaction(user_id, offer_index, total_price)
 
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("ðŸ”™ Ø±Ø¬ÙˆØ¹ Ø¥Ù„Ù‰ Ø§Ù„ÙˆØ§Ø¬Ù‡Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©", callback_data="main_menu"))
+        markup.add(InlineKeyboardButton("🔙 رجوع إلى الواجهة الرئيسية", callback_data="main_menu"))
 
         bot.send_message(
             message.chat.id,
-            f"âœ… ØªÙ…Øª Ø¹Ù…Ù„ÙŠØ© Ø§Ù„Ø´Ø±Ø§Ø¡ Ø¨Ù†Ø¬Ø§Ø­!\nðŸ’µ ØªÙ… Ø®ØµÙ… {total_price} Ù…Ù† Ø±ØµÙŠØ¯Ùƒ.\nðŸ“¦ Ø§Ù„ÙƒÙ…ÙŠØ©: {quantity}\nØ³ÙŠØªÙ… Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹Ùƒ Ù…Ù† Ø§Ù„Ø¥Ø¯Ø§Ø±Ø©.",
+            f"✅ تمت عملية الشراء بنجاح!\n💵 تم خصم {total_price} من رصيدك.\n📦 الكمية: {quantity}\nسيتم التواصل معك من الإدارة.",
             reply_markup=markup
         )
 
@@ -332,10 +332,10 @@ def process_quantity(message, offer_index, user_id):
             logger.error(f"Error notifying admin after purchase: {e}")
 
     except ValueError:
-        bot.send_message(message.chat.id, "âš ï¸ Ø§Ù„Ø±Ø¬Ø§Ø¡ Ø¥Ø¯Ø®Ø§Ù„ Ø±Ù‚Ù… ØµØ­ÙŠØ­ Ù„Ù„ÙƒÙ…ÙŠØ©.")
+        bot.send_message(message.chat.id, "⚠️ الرجاء إدخال رقم صحيح للكمية.")
     except Exception as e:
         logger.error(f"Unexpected error in process_quantity: {e}")
-        bot.send_message(message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø¯Ø§Ø®Ù„ÙŠ Ø£Ø«Ù†Ø§Ø¡ Ù…Ø¹Ø§Ù„Ø¬Ø© Ø§Ù„ÙƒÙ…ÙŠØ©.")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ داخلي أثناء معالجة الكمية.")
 
 def get_all_offers():
     try:
@@ -365,22 +365,22 @@ def create_offer_buttons(offers, row_width=2):
 @bot.message_handler(commands=['start'])
 def start(message):
     if is_user_banned(message.from_user.id):
-        bot.send_message(message.chat.id, "ðŸš« Ù„Ù‚Ø¯ ØªÙ… Ø­Ø¸Ø±Ùƒ Ù…Ù† Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù‡Ø°Ø§ Ø§Ù„Ø¨ÙˆØª Ø¨Ø´ÙƒÙ„ Ø¯Ø§Ø¦Ù….")
+        bot.send_message(message.chat.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.")
         return
     user_id = message.chat.id
-    username = message.chat.username or "â›” ØºÙŠØ± Ù…ØªÙˆÙØ±"
+    username = message.chat.username or "⛔ غير متوفر"
     update_user(user_id, username)
     buttons_structure = [
-        [{"text": "ðŸ›ï¸ Ø§Ù„Ø¹Ø±ÙˆØ¶", "callback_data": "show_offers"}, {"text": "ðŸ’³ Ø´Ø­Ù† Ø±ØµÙŠØ¯", "callback_data": "recharge_balance"}],
-        [{"text": "â„¹ï¸ Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ø§Ù„Ø­Ø³Ø§Ø¨", "callback_data": "account_info"}],
-        [{"text": "ðŸ“© Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹ Ø§Ù„Ø¥Ø¯Ø§Ø±Ø© ", "callback_data": f"reply_to_admin_{message.chat.id}"}]
+        [{"text": "🛍️ العروض", "callback_data": "show_offers"}, {"text": "💳 شحن رصيد", "callback_data": "recharge_balance"}],
+        [{"text": "ℹ️ معلومات الحساب", "callback_data": "account_info"}],
+        [{"text": "📩 التواصل مع الإدارة ", "callback_data": f"reply_to_admin_{message.chat.id}"}]
     ]
     markup = create_buttons(buttons_structure)
-    bot.send_message(message.chat.id, f"ðŸŽ‰ Ù…Ø±Ø­Ø¨Ø§Ù‹ Ø¨Ùƒ ÙŠØ§ {message.from_user.first_name or 'Ø¶ÙŠÙÙ†Ø§ Ø§Ù„Ø¹Ø²ÙŠØ²'}\n ÙÙŠ Astra Store!\n\n"
-        "ðŸ›’ Ø§ÙƒØªØ´Ù Ø§Ù„Ø¹Ø±ÙˆØ¶ Ø§Ù„Ù…Ù…ÙŠØ²Ø©.\n"
-        "ðŸ’³ Ø§Ø´Ø­Ù† Ø±ØµÙŠØ¯Ùƒ Ø¨Ø³Ù‡ÙˆÙ„Ø©.\n"
-        "ðŸ“© ØªÙˆØ§ØµÙ„ Ù…Ø¹Ù†Ø§ Ù„Ø£ÙŠ Ø§Ø³ØªÙØ³Ø§Ø±.\n\n"
-        "ðŸ”½ Ø§Ø®ØªØ± Ø£Ø­Ø¯ Ø§Ù„Ø®ÙŠØ§Ø±Ø§Øª Ù…Ù† Ø§Ù„Ù‚Ø§Ø¦Ù…Ø© Ø£Ø¯Ù†Ø§Ù‡ Ù„Ù„Ø¨Ø¯Ø¡:", reply_markup=markup)
+    bot.send_message(message.chat.id, f"🎉 مرحباً بك يا {message.from_user.first_name or 'ضيفنا العزيز'}\n في Astra Store!\n\n"
+        "🛒 اكتشف العروض المميزة.\n"
+        "💳 اشحن رصيدك بسهولة.\n"
+        "📩 تواصل معنا لأي استفسار.\n\n"
+        "🔽 اختر أحد الخيارات من القائمة أدناه للبدء:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == "show_offers")
 def show_offers(call):
@@ -402,7 +402,7 @@ def show_offers(call):
     if not categories:
         bot.answer_callback_query(
             call.id,
-            "ðŸš« Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¹Ø±ÙˆØ¶ Ù…ØªØ§Ø­Ø© Ø­Ø§Ù„ÙŠØ§Ù‹.",
+            "🚫 لا توجد عروض متاحة حالياً.",
             show_alert=True
         )
         return
@@ -410,13 +410,13 @@ def show_offers(call):
     markup = InlineKeyboardMarkup(row_width=2)
     for cat in categories:
         markup.add(InlineKeyboardButton(cat[0], callback_data=f"category_{cat[0]}"))
-    markup.add(InlineKeyboardButton("ðŸ”™ Ø±Ø¬ÙˆØ¹", callback_data="main_menu"))
+    markup.add(InlineKeyboardButton("🔙 رجوع", callback_data="main_menu"))
 
     try:
-        bot.edit_message_text("ðŸ“‚ Ø§Ø®ØªØ± Ø§Ù„Ù‚Ø³Ù… Ù„Ø¹Ø±Ø¶ Ø§Ù„Ø¹Ø±ÙˆØ¶:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+        bot.edit_message_text("📂 اختر القسم لعرض العروض:", call.message.chat.id, call.message.message_id, reply_markup=markup)
     except telebot.apihelper.ApiTelegramException:
         bot.delete_message(call.message.chat.id, call.message.message_id)
-        bot.send_message(call.message.chat.id, "ðŸ“‚ Ø§Ø®ØªØ± Ø§Ù„Ù‚Ø³Ù… Ù„Ø¹Ø±Ø¶ Ø§Ù„Ø¹Ø±ÙˆØ¶:", reply_markup=markup)
+        bot.send_message(call.message.chat.id, "📂 اختر القسم لعرض العروض:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("category_"))
 def show_offers_by_category(call):
@@ -432,40 +432,40 @@ def show_offers_by_category(call):
         offers = []
 
     if not offers:
-        bot.answer_callback_query(call.id, "âŒ Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¹Ø±ÙˆØ¶ ÙÙŠ Ù‡Ø°Ø§ Ø§Ù„Ù‚Ø³Ù….", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ لا توجد عروض في هذا القسم.", show_alert=True)
         return
 
     markup = InlineKeyboardMarkup(row_width=2)
     for offer in offers:
         markup.add(InlineKeyboardButton(offer[1], callback_data=f"offer_{offer[0]}"))
-    markup.add(InlineKeyboardButton("ðŸ”™ Ø±Ø¬ÙˆØ¹", callback_data="show_offers"))
+    markup.add(InlineKeyboardButton("🔙 رجوع", callback_data="show_offers"))
 
     try:
-        bot.edit_message_text(f"ðŸ“‚ Ø§Ù„Ø¹Ø±ÙˆØ¶ ÙÙŠ Ù‚Ø³Ù…: {category}", call.message.chat.id, call.message.message_id, reply_markup=markup)
+        bot.edit_message_text(f"📂 العروض في قسم: {category}", call.message.chat.id, call.message.message_id, reply_markup=markup)
     except telebot.apihelper.ApiTelegramException:
-        bot.send_message(call.message.chat.id, f"ðŸ“‚ Ø§Ù„Ø¹Ø±ÙˆØ¶ ÙÙŠ Ù‚Ø³Ù…: {category}", reply_markup=markup)
+        bot.send_message(call.message.chat.id, f"📂 العروض في قسم: {category}", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("offer_"))
 def display_offer_details(call):
     if is_user_banned(call.from_user.id):
-        bot.answer_callback_query(call.id, "ðŸš« Ù„Ù‚Ø¯ ØªÙ… Ø­Ø¸Ø±Ùƒ Ù…Ù† Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù‡Ø°Ø§ Ø§Ù„Ø¨ÙˆØª Ø¨Ø´ÙƒÙ„ Ø¯Ø§Ø¦Ù….", show_alert=True)
+        bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
         return
     try:
         offer_id = int(call.data.split("_")[1])
         offer = fetch_offer_tuple(offer_id)  # (id, name, price, quantity, image, details, category)
         if not offer:
-            bot.send_message(call.message.chat.id, "âš ï¸ Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø¹Ø«ÙˆØ± Ø¹Ù„Ù‰ Ø§Ù„Ø¹Ø±Ø¶.")
+            bot.send_message(call.message.chat.id, "⚠️ لم يتم العثور على العرض.")
             return
-        text = (f"ðŸ“Œ Ø§Ø³Ù… Ø§Ù„Ø¹Ø±Ø¶: {offer[1]}\n"
-                f"ðŸ“ Ø§Ù„ØªÙØ§ØµÙŠÙ„: {offer[5]}\n"
-                f"ðŸ’² Ø§Ù„Ø³Ø¹Ø±: {offer[2]}\n"
-                f"ðŸ“¦ Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ù…ØªØ§Ø­Ø©: {offer[3]}")
+        text = (f"📌 اسم العرض: {offer[1]}\n"
+                f"📝 التفاصيل: {offer[5]}\n"
+                f"💲 السعر: {offer[2]}\n"
+                f"📦 الكمية المتاحة: {offer[3]}")
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("ðŸ›’ Ø´Ø±Ø§Ø¡ Ø§Ù„Ø¹Ø±Ø¶", callback_data=f"buy_{offer_id}"))
+        markup.add(InlineKeyboardButton("🛒 شراء العرض", callback_data=f"buy_{offer_id}"))
         if call.from_user.id == ADMIN_ID:
-            markup.add(InlineKeyboardButton("âœï¸ ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ø¹Ø±Ø¶", callback_data=f"edit_{offer_id}"))
-            markup.add(InlineKeyboardButton("ðŸ—‘ï¸ Ø­Ø°Ù Ø§Ù„Ø¹Ø±Ø¶", callback_data=f"delete_{offer_id}"))
-        markup.add(InlineKeyboardButton("ðŸ”™ Ø±Ø¬ÙˆØ¹", callback_data="show_offers"))
+            markup.add(InlineKeyboardButton("✏️ تعديل العرض", callback_data=f"edit_{offer_id}"))
+            markup.add(InlineKeyboardButton("🗑️ حذف العرض", callback_data=f"delete_{offer_id}"))
+        markup.add(InlineKeyboardButton("🔙 رجوع", callback_data="show_offers"))
         if offer[4]:
             try:
                 bot.delete_message(call.message.chat.id, call.message.message_id)
@@ -476,65 +476,65 @@ def display_offer_details(call):
             bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
     except Exception as e:
         logger.error(f"Error displaying offer details: {e}")
-        bot.send_message(call.message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ø¹Ø±Ø¶ ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø¹Ø±Ø¶.")
+        bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء عرض تفاصيل العرض.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("delete_"))
 def delete_offer(call):
     if call.from_user.id != ADMIN_ID:
-        bot.answer_callback_query(call.id, "âš ï¸ Ù‡Ø°Ø§ Ø§Ù„Ø£Ù…Ø± Ù…Ø®ØµØµ Ù„Ù„Ø£Ø¯Ù…Ù† ÙÙ‚Ø·!")
+        bot.answer_callback_query(call.id, "⚠️ هذا الأمر مخصص للأدمن فقط!")
         return
     offer_id = int(call.data.split("_")[1])
     try:
         delete_offer_from_db(offer_id)
-        bot.answer_callback_query(call.id, "âœ… ØªÙ… Ø­Ø°Ù Ø§Ù„Ø¹Ø±Ø¶ Ø¨Ù†Ø¬Ø§Ø­.")
-        bot.edit_message_text("âœ… ØªÙ… Ø­Ø°Ù Ø§Ù„Ø¹Ø±Ø¶.", call.message.chat.id, call.message.message_id)
+        bot.answer_callback_query(call.id, "✅ تم حذف العرض بنجاح.")
+        bot.edit_message_text("✅ تم حذف العرض.", call.message.chat.id, call.message.message_id)
     except Exception as e:
         logger.error(f"Error deleting offer via callback: {e}")
-        bot.send_message(call.message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ø­Ø°Ù Ø§Ù„Ø¹Ø±Ø¶. ÙŠØ±Ø¬Ù‰ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù„Ø§Ø­Ù‚Ù‹Ø§.")
+        bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء حذف العرض. يرجى المحاولة لاحقًا.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("edit_"))
 def edit_offer(call):
     if call.from_user.id != ADMIN_ID:
-        bot.answer_callback_query(call.id, "âš ï¸ Ù‡Ø°Ø§ Ø§Ù„Ø£Ù…Ø± Ù…Ø®ØµØµ Ù„Ù„Ø£Ø¯Ù…Ù† ÙÙ‚Ø·!")
+        bot.answer_callback_query(call.id, "⚠️ هذا الأمر مخصص للأدمن فقط!")
         return
     offer_id = int(call.data.split("_")[1])
-    msg = bot.send_message(call.message.chat.id, "âœï¸ Ø£Ø¯Ø®Ù„ Ø§Ù„Ø§Ø³Ù… Ø§Ù„Ø¬Ø¯ÙŠØ¯ Ù„Ù„Ø¹Ø±Ø¶:")
+    msg = bot.send_message(call.message.chat.id, "✏️ أدخل الاسم الجديد للعرض:")
     bot.register_next_step_handler(msg, get_new_name, offer_id)
 
 def get_new_name(message, offer_id):
     new_name = message.text.strip()
-    msg = bot.send_message(message.chat.id, "âœï¸ Ø£Ø¯Ø®Ù„ Ø§Ù„ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø¬Ø¯ÙŠØ¯Ø© Ù„Ù„Ø¹Ø±Ø¶:")
+    msg = bot.send_message(message.chat.id, "✏️ أدخل التفاصيل الجديدة للعرض:")
     bot.register_next_step_handler(msg, get_new_details, offer_id, new_name)
 
 def get_new_details(message, offer_id, new_name):
     new_details = message.text.strip()
-    msg = bot.send_message(message.chat.id, "âœï¸ Ø£Ø¯Ø®Ù„ Ø§Ù„Ø³Ø¹Ø± Ø§Ù„Ø¬Ø¯ÙŠØ¯ Ù„Ù„Ø¹Ø±Ø¶:")
+    msg = bot.send_message(message.chat.id, "✏️ أدخل السعر الجديد للعرض:")
     bot.register_next_step_handler(msg, get_new_price, offer_id, new_name, new_details)
 
 def get_new_price(message, offer_id, new_name, new_details):
     try:
         new_price = float(message.text.strip())
-        msg = bot.send_message(message.chat.id, "âœï¸ Ø£Ø¯Ø®Ù„ Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ø¬Ø¯ÙŠØ¯Ø© Ù„Ù„Ø¹Ø±Ø¶:")
+        msg = bot.send_message(message.chat.id, "✏️ أدخل الكمية الجديدة للعرض:")
         bot.register_next_step_handler(msg, update_offer, offer_id, new_name, new_details, new_price)
     except ValueError:
-        bot.send_message(message.chat.id, "âš ï¸ Ø£Ø¯Ø®Ù„ Ø³Ø¹Ø±Ù‹Ø§ ØµØ§Ù„Ø­Ù‹Ø§.")
+        bot.send_message(message.chat.id, "⚠️ أدخل سعرًا صالحًا.")
         return
 
 def update_offer(message, offer_id, new_name, new_details, new_price):
     try:
         new_quantity = int(message.text.strip())
         update_offer_in_db(offer_id, new_name, new_details, new_price, new_quantity, None)
-        bot.send_message(message.chat.id, "âœ… ØªÙ… ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ø¹Ø±Ø¶ Ø¨Ù†Ø¬Ø§Ø­.")
+        bot.send_message(message.chat.id, "✅ تم تعديل العرض بنجاح.")
     except ValueError:
-        bot.send_message(message.chat.id, "âš ï¸ Ø§Ø¯Ø®Ù„ ÙƒÙ…ÙŠØ© ØµØ§Ù„Ø­Ø©.")
+        bot.send_message(message.chat.id, "⚠️ ادخل كمية صالحة.")
     except Exception as e:
         logger.error(f"Error updating offer via handler: {e}")
-        bot.send_message(message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ø¹Ø±Ø¶. ÙŠØ±Ø¬Ù‰ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù„Ø§Ø­Ù‚Ù‹Ø§.")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء تعديل العرض. يرجى المحاولة لاحقًا.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
 def handle_purchase(call):
     if is_user_banned(call.from_user.id):
-        bot.answer_callback_query(call.id, "ðŸš« Ù„Ù‚Ø¯ ØªÙ… Ø­Ø¸Ø±Ùƒ Ù…Ù† Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù‡Ø°Ø§ Ø§Ù„Ø¨ÙˆØª Ø¨Ø´ÙƒÙ„ Ø¯Ø§Ø¦Ù….", show_alert=True)
+        bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
         return
 
     user_id = call.from_user.id
@@ -543,13 +543,13 @@ def handle_purchase(call):
     offer = fetch_offer_tuple(offer_index)
 
     if offer is None:
-        bot.answer_callback_query(call.id, "âš ï¸ Ø§Ù„Ø¹Ø±Ø¶ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.", show_alert=True)
+        bot.answer_callback_query(call.id, "⚠️ العرض غير موجود.", show_alert=True)
         return
 
     balance = get_user_balance(user_id)
 
     if balance < (offer[2] or 0):
-        bot.answer_callback_query(call.id, "âš ï¸ Ø±ØµÙŠØ¯Ùƒ ØºÙŠØ± ÙƒØ§ÙÙ Ù„Ø¥ØªÙ…Ø§Ù… Ø§Ù„Ø¹Ù…Ù„ÙŠØ©!", show_alert=True)
+        bot.answer_callback_query(call.id, "⚠️ رصيدك غير كافٍ لإتمام العملية!", show_alert=True)
         return
 
     try:
@@ -557,7 +557,7 @@ def handle_purchase(call):
     except Exception:
         pass
 
-    msg = bot.send_message(call.message.chat.id, "âœï¸ Ø£Ø¯Ø®Ù„ Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ù…Ø·Ù„ÙˆØ¨Ø©:")
+    msg = bot.send_message(call.message.chat.id, "✏️ أدخل الكمية المطلوبة:")
     bot.register_next_step_handler(msg, process_quantity, offer_index, user_id)
 
 def notify_admin_for_delivery(user_id, offer, quantity):
@@ -566,14 +566,14 @@ def notify_admin_for_delivery(user_id, offer, quantity):
     """
     try:
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("Ø¥Ø±Ø³Ø§Ù„ Ø·Ù„Ø¨", callback_data=f"send_request_{user_id}"))
-        markup.add(InlineKeyboardButton("Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ø·Ù„Ø¨", callback_data=f"cancel_request_{user_id}"))
+        markup.add(InlineKeyboardButton("إرسال طلب", callback_data=f"send_request_{user_id}"))
+        markup.add(InlineKeyboardButton("إلغاء الطلب", callback_data=f"cancel_request_{user_id}"))
         bot.send_message(ADMIN_ID,
-                         f"Ø·Ù„Ø¨ Ø¬Ø¯ÙŠØ¯ Ù…Ù† Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…: {user_id}\n"
-                         f"Ø§Ø³Ù… Ø§Ù„Ø¹Ø±Ø¶: {offer[1]}\n"
-                         f"Ø§Ù„Ø³Ø¹Ø±: {offer[2]}\n"
-                         f"Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ù…Ø·Ù„ÙˆØ¨Ø©: {quantity}\n"
-                         f"Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ù…ØªØ¨Ù‚ÙŠØ©: {offer[3]}",
+                         f"طلب جديد من المستخدم: {user_id}\n"
+                         f"اسم العرض: {offer[1]}\n"
+                         f"السعر: {offer[2]}\n"
+                         f"الكمية المطلوبة: {quantity}\n"
+                         f"الكمية المتبقية: {offer[3]}",
                          reply_markup=markup
                      )
     except Exception as e:
@@ -582,74 +582,74 @@ def notify_admin_for_delivery(user_id, offer, quantity):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("send_request_"))
 def request_delivery_message(call):
     if is_user_banned(call.from_user.id):
-        bot.answer_callback_query(call.id, "ðŸš« Ù„Ù‚Ø¯ ØªÙ… Ø­Ø¸Ø±Ùƒ Ù…Ù† Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù‡Ø°Ø§ Ø§Ù„Ø¨ÙˆØª Ø¨Ø´ÙƒÙ„ Ø¯Ø§Ø¦Ù….", show_alert=True)
+        bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
         return
     user_id = int(call.data.split("_")[2])
-    msg = bot.send_message(call.message.chat.id, "Ø£Ø±Ø³Ù„ Ø±Ø³Ø§Ù„Ø© Ø£Ùˆ Ù…Ù„Ù Ø£Ùˆ ÙˆØ³Ø§Ø¦Ø· Ù„ØªØ³Ù„ÙŠÙ…Ù‡Ø§ Ù„Ù„Ù…Ø³ØªØ®Ø¯Ù….")
+    msg = bot.send_message(call.message.chat.id, "أرسل رسالة أو ملف أو وسائط لتسليمها للمستخدم.")
     bot.register_next_step_handler(msg, deliver_to_user, user_id)
 
 def deliver_to_user(message, user_id):
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("ðŸ“© Ø±Ø¯ Ø¹Ù„Ù‰ Ø§Ù„Ø¥Ø¯Ø§Ø±Ø©", callback_data=f"reply_to_admin_{message.chat.id}"))
+    markup.add(InlineKeyboardButton("📩 رد على الإدارة", callback_data=f"reply_to_admin_{message.chat.id}"))
     try:
         if message.photo:
-            bot.send_photo(user_id, message.photo[-1].file_id, caption=message.caption or "âœ… ØªÙ… ØªØ³Ù„ÙŠÙ… Ø§Ù„Ø·Ù„Ø¨.", reply_markup=markup)
+            bot.send_photo(user_id, message.photo[-1].file_id, caption=message.caption or "✅ تم تسليم الطلب.", reply_markup=markup)
         elif message.document:
-            bot.send_document(user_id, message.document.file_id, caption=message.caption or "âœ… ØªÙ… ØªØ³Ù„ÙŠÙ… Ø§Ù„Ø·Ù„Ø¨.", reply_markup=markup)
+            bot.send_document(user_id, message.document.file_id, caption=message.caption or "✅ تم تسليم الطلب.", reply_markup=markup)
         elif message.text:
             bot.send_message(user_id, message.text, reply_markup=markup)
-        bot.send_message(message.chat.id, "âœ… ØªÙ… ØªØ³Ù„ÙŠÙ… Ø§Ù„Ø·Ù„Ø¨ Ù„Ù„Ù…Ø³ØªØ®Ø¯Ù….")
+        bot.send_message(message.chat.id, "✅ تم تسليم الطلب للمستخدم.")
     except Exception as e:
         logger.error(f"Error delivering to user {user_id}: {e}")
-        bot.send_message(message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ ØªØ³Ù„ÙŠÙ… Ø§Ù„Ø±Ø³Ø§Ù„Ø© Ù„Ù„Ù…Ø³ØªØ®Ø¯Ù….")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء تسليم الرسالة للمستخدم.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("reply_to_admin_"))
 def handle_user_reply(call):
     if is_user_banned(call.from_user.id):
-        bot.answer_callback_query(call.id, "ðŸš« Ù„Ù‚Ø¯ ØªÙ… Ø­Ø¸Ø±Ùƒ Ù…Ù† Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù‡Ø°Ø§ Ø§Ù„Ø¨ÙˆØª Ø¨Ø´ÙƒÙ„ Ø¯Ø§Ø¦Ù….", show_alert=True)
+        bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
         return
     admin_id = ADMIN_ID
     markup = types.InlineKeyboardMarkup()
-    cancel_button = types.InlineKeyboardButton("ðŸš« Ø¥Ù„ØºØ§Ø¡", callback_data="cancel")
+    cancel_button = types.InlineKeyboardButton("🚫 إلغاء", callback_data="cancel")
     markup.add(cancel_button)
     msg = bot.edit_message_text(
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
-        text="âœï¸ Ø§ÙƒØªØ¨ Ø±Ø³Ø§Ù„ØªÙƒ Ù„Ù„Ø¥Ø¯Ø§Ø±Ø©:",
+        text="✏️ اكتب رسالتك للإدارة:",
         reply_markup=markup
     )
     bot.register_next_step_handler(msg, send_reply_to_admin, call.message.chat.id, admin_id)
 
 def send_reply_to_admin(message, user_id, admin_id):
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Ø±Ø¯ Ø¹Ù„Ù‰ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…", callback_data=f"send_request_{user_id}"))
-    user_info = f"Ø§Ø³Ù… Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…: {message.from_user.first_name or 'ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ'}\n"
-    user_info += f"Ø§Ù„Ù…Ø¹Ø±Ù: @{message.from_user.username or 'ØºÙŠØ± Ù…ØªÙˆÙØ±'}\n"
+    markup.add(InlineKeyboardButton("رد على المستخدم", callback_data=f"send_request_{user_id}"))
+    user_info = f"اسم المستخدم: {message.from_user.first_name or 'غير معروف'}\n"
+    user_info += f"المعرف: @{message.from_user.username or 'غير متوفر'}\n"
     user_info += f"ID: {user_id}\n"
-    user_info += f"Ø§Ù„Ø±Ø³Ø§Ù„Ø©:\n"
+    user_info += f"الرسالة:\n"
     try:
         if message.photo:
-            bot.send_photo(admin_id, message.photo[-1].file_id, caption=user_info + (message.caption or "ØªÙ… Ø§Ø³ØªÙ„Ø§Ù… Ø±Ø³Ø§Ù„Ø© Ù…Ù† Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…."), reply_markup=markup)
+            bot.send_photo(admin_id, message.photo[-1].file_id, caption=user_info + (message.caption or "تم استلام رسالة من المستخدم."), reply_markup=markup)
         elif message.document:
-            bot.send_document(admin_id, message.document.file_id, caption=user_info + (message.caption or "ØªÙ… Ø§Ø³ØªÙ„Ø§Ù… Ø±Ø³Ø§Ù„Ø© Ù…Ù† Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…."), reply_markup=markup)
+            bot.send_document(admin_id, message.document.file_id, caption=user_info + (message.caption or "تم استلام رسالة من المستخدم."), reply_markup=markup)
         elif message.text:
             bot.send_message(admin_id, user_info + message.text, reply_markup=markup)
 
-        bot.send_message(message.chat.id, "âœ… ØªÙ… Ø¥Ø±Ø³Ø§Ù„ Ø±Ø³Ø§Ù„ØªÙƒ Ù„Ù„Ø¥Ø¯Ø§Ø±Ø©.")
+        bot.send_message(message.chat.id, "✅ تم إرسال رسالتك للإدارة.")
     except Exception as e:
         logger.error(f"Error sending reply to admin: {e}")
-        bot.send_message(message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ø¥Ø±Ø³Ø§Ù„ Ø±Ø³Ø§Ù„ØªÙƒ Ù„Ù„Ø¥Ø¯Ø§Ø±Ø©.")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء إرسال رسالتك للإدارة.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_request_"))
 def request_cancellation_reason(call):
     user_id = int(call.data.split("_")[2])
-    msg = bot.send_message(call.message.chat.id, "âœï¸ Ø£Ø¯Ø®Ù„ Ø³Ø¨Ø¨ Ø§Ù„Ø¥Ù„ØºØ§Ø¡:")
+    msg = bot.send_message(call.message.chat.id, "✏️ أدخل سبب الإلغاء:")
     bot.register_next_step_handler(msg, cancel_order, user_id)
 
 def cancel_order(message, user_id):
     reason = message.text
 
-    # Ø¬Ù„Ø¨ Ø¢Ø®Ø± Ù…Ø¹Ø§Ù…Ù„Ø©
+    # جلب آخر معاملة
     try:
         try:
             uid = int(user_id)
@@ -671,27 +671,27 @@ def cancel_order(message, user_id):
 
         bot.send_message(
             user_id,
-            f"âŽ ØªÙ… Ø¥Ù„ØºØ§Ø¡ Ø·Ù„Ø¨Ùƒ.\nðŸ“Œ Ø§Ù„Ø³Ø¨Ø¨: {reason}\nðŸ’° ØªÙ… Ø¥Ø±Ø¬Ø§Ø¹ {amount_to_refund} USD Ø¥Ù„Ù‰ Ø±ØµÙŠØ¯Ùƒ."
+            f"❎ تم إلغاء طلبك.\n📌 السبب: {reason}\n💰 تم إرجاع {amount_to_refund} USD إلى رصيدك."
         )
 
         bot.send_message(
             message.chat.id,
-            f"âœ”ï¸ ØªÙ… Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ø·Ù„Ø¨.\nðŸ’µ ØªÙ… Ø¥Ø±Ø¬Ø§Ø¹ {amount_to_refund} USD Ù„Ù„Ù…Ø³ØªØ®Ø¯Ù…."
+            f"✔️ تم إلغاء الطلب.\n💵 تم إرجاع {amount_to_refund} USD للمستخدم."
         )
     else:
-        bot.send_message(user_id, "âš ï¸ Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø¹Ø«ÙˆØ± Ø¹Ù„Ù‰ Ø£ÙŠ Ù…Ø¹Ø§Ù…Ù„Ø© Ù…Ø±ØªØ¨Ø·Ø© Ø¨Ù‡Ø°Ø§ Ø§Ù„Ø·Ù„Ø¨.")
+        bot.send_message(user_id, "⚠️ لم يتم العثور على أي معاملة مرتبطة بهذا الطلب.")
 
 @bot.callback_query_handler(func=lambda call: call.data == "main_menu")
 def show_main_menu(call):
     if is_user_banned(call.from_user.id):
-        bot.answer_callback_query(call.id, "ðŸš« Ù„Ù‚Ø¯ ØªÙ… Ø­Ø¸Ø±Ùƒ Ù…Ù† Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù‡Ø°Ø§ Ø§Ù„Ø¨ÙˆØª Ø¨Ø´ÙƒÙ„ Ø¯Ø§Ø¦Ù….", show_alert=True)
+        bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
         return
     user_id = call.message.chat.id
-    username = call.message.chat.username or "ØºÙŠØ± Ù…ØªÙˆÙØ±"
+    username = call.message.chat.username or "غير متوفر"
     buttons_structure = [
-        [{"text": "ðŸ›ï¸ Ø§Ù„Ø¹Ø±ÙˆØ¶", "callback_data": "show_offers"}, {"text": "ðŸ’³ Ø´Ø­Ù† Ø±ØµÙŠØ¯", "callback_data": "recharge_balance"}],
-        [{"text": "â„¹ï¸ Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ø§Ù„Ø­Ø³Ø§Ø¨", "callback_data": "account_info"}],
-        [{"text": "ðŸ“© Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹ Ø§Ù„Ø¥Ø¯Ø§Ø±Ø©", "callback_data": f"reply_to_admin_{call.message.chat.id}"}]
+        [{"text": "🛍️ العروض", "callback_data": "show_offers"}, {"text": "💳 شحن رصيد", "callback_data": "recharge_balance"}],
+        [{"text": "ℹ️ معلومات الحساب", "callback_data": "account_info"}],
+        [{"text": "📩 التواصل مع الإدارة", "callback_data": f"reply_to_admin_{call.message.chat.id}"}]
     ]
     markup = create_buttons(buttons_structure)
     try:
@@ -699,118 +699,118 @@ def show_main_menu(call):
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
             text=(
-                f"ðŸŽ‰ Ù…Ø±Ø­Ø¨Ø§Ù‹ Ø¨Ùƒ ÙŠØ§ {call.message.chat.first_name or 'Ø¶ÙŠÙÙ†Ø§ Ø§Ù„Ø¹Ø²ÙŠØ²'}\n ÙÙŠ Astra Store!\n\n"
-                "ðŸ›’ Ø§ÙƒØªØ´Ù Ø§Ù„Ø¹Ø±ÙˆØ¶ Ø§Ù„Ù…Ù…ÙŠØ²Ø©.\n"
-                "ðŸ’³ Ø§Ø´Ø­Ù† Ø±ØµÙŠØ¯Ùƒ Ø¨Ø³Ù‡ÙˆÙ„Ø©.\n"
-                "ðŸ“© ØªÙˆØ§ØµÙ„ Ù…Ø¹Ù†Ø§ Ù„Ø£ÙŠ Ø§Ø³ØªÙØ³Ø§Ø±.\n\n"
-                "ðŸ”½ Ø§Ø®ØªØ± Ø£Ø­Ø¯ Ø§Ù„Ø®ÙŠØ§Ø±Ø§Øª Ù…Ù† Ø§Ù„Ù‚Ø§Ø¦Ù…Ø© Ø£Ø¯Ù†Ø§Ù‡ Ù„Ù„Ø¨Ø¯Ø¡:"
+                f"🎉 مرحباً بك يا {call.message.chat.first_name or 'ضيفنا العزيز'}\n في Astra Store!\n\n"
+                "🛒 اكتشف العروض المميزة.\n"
+                "💳 اشحن رصيدك بسهولة.\n"
+                "📩 تواصل معنا لأي استفسار.\n\n"
+                "🔽 اختر أحد الخيارات من القائمة أدناه للبدء:"
             ),
             reply_markup=markup
         )
     except telebot.apihelper.ApiTelegramException as e:
-        bot.answer_callback_query(call.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ø±Ø³Ø§Ù„Ø©.", show_alert=True)
+        bot.answer_callback_query(call.id, "⚠️ حدث خطأ أثناء تعديل الرسالة.", show_alert=True)
         print(f"Error editing message: {e}")
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
     if is_user_banned(call.from_user.id):
-        bot.answer_callback_query(call.id, "ðŸš« Ù„Ù‚Ø¯ ØªÙ… Ø­Ø¸Ø±Ùƒ Ù…Ù† Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù‡Ø°Ø§ Ø§Ù„Ø¨ÙˆØª Ø¨Ø´ÙƒÙ„ Ø¯Ø§Ø¦Ù….", show_alert=True)
+        bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
         return
     user_id = call.message.chat.id
     try:
         if call.data == 'account_info':
-            username = call.message.chat.username or "ØºÙŠØ± Ù…ØªÙˆÙØ±"
+            username = call.message.chat.username or "غير متوفر"
             balance = get_user_balance(user_id)
             account_info = (
-                f"â„¹ï¸ Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ø§Ù„Ø­Ø³Ø§Ø¨:\n"
-                f"ðŸ‘¤ Ø§Ø³Ù… Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…: @{username}\n"
-                f"ðŸ†” Ù…Ø¹Ø±Ù Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…: {user_id}\n"
-                f"ðŸ’° Ø±ØµÙŠØ¯ Ø§Ù„Ø­Ø³Ø§Ø¨: {balance} USD\n"
-                "ðŸ”„ Ø§Ø´Ø­Ù† Ø±ØµÙŠØ¯Ùƒ Ù„Ù„Ø§Ø³ØªÙ…ØªØ§Ø¹ Ø¨Ø®Ø¯Ù…Ø§ØªÙ†Ø§ Ø§Ù„Ù…Ù…ÙŠØ²Ø©."
+                f"ℹ️ معلومات الحساب:\n"
+                f"👤 اسم المستخدم: @{username}\n"
+                f"🆔 معرف المستخدم: {user_id}\n"
+                f"💰 رصيد الحساب: {balance} USD\n"
+                "🔄 اشحن رصيدك للاستمتاع بخدماتنا المميزة."
             )
             back_button = types.InlineKeyboardMarkup(row_width=1)
-            back_button.add(types.InlineKeyboardButton("ðŸ”™ Ø±Ø¬ÙˆØ¹", callback_data='main_menu'))
+            back_button.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   text=account_info, reply_markup=back_button)
         elif call.data == 'recharge_balance':
             keyboard = types.InlineKeyboardMarkup(row_width=1)
             keyboard.add(
-                types.InlineKeyboardButton("ðŸ’µ USDT", callback_data='usdt'),
-                types.InlineKeyboardButton("ðŸ’° Syriatel Cash", callback_data='syriatelcash'),
-                types.InlineKeyboardButton("ðŸ’° Sham Cash", callback_data='shamcash'),
+                types.InlineKeyboardButton("💵 USDT", callback_data='usdt'),
+                types.InlineKeyboardButton("💰 Syriatel Cash", callback_data='syriatelcash'),
+                types.InlineKeyboardButton("💰 Sham Cash", callback_data='shamcash'),
             )
-            keyboard.add(types.InlineKeyboardButton("ðŸ”™ Ø±Ø¬ÙˆØ¹", callback_data='main_menu'))
+            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
             bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
-                                  text="ðŸ’³ Ø§Ø®ØªØ± ÙˆØ³ÙŠÙ„Ø© Ø§Ù„Ø¯ÙØ¹ Ø§Ù„ØªÙŠ ØªØ±ØºØ¨ ÙÙŠ Ø§Ø³ØªØ®Ø¯Ø§Ù…Ù‡Ø§ Ù„Ø´Ø­Ù† Ø±ØµÙŠØ¯Ùƒ ðŸ‘‡:", reply_markup=keyboard)
+                                  text="💳 اختر وسيلة الدفع التي ترغب في استخدامها لشحن رصيدك 👇:", reply_markup=keyboard)
         elif call.data == 'usdt':
             if is_user_banned(call.from_user.id):
-                bot.answer_callback_query(call.id, "ðŸš« Ù„Ù‚Ø¯ ØªÙ… Ø­Ø¸Ø±Ùƒ Ù…Ù† Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù‡Ø°Ø§ Ø§Ù„Ø¨ÙˆØª Ø¨Ø´ÙƒÙ„ Ø¯Ø§Ø¦Ù….", show_alert=True)
+                bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
                 return
             keyboard = types.InlineKeyboardMarkup(row_width=1)
             keyboard.add(
-                types.InlineKeyboardButton("ðŸ’µ Ø´Ø¨ÙƒØ© TRON", callback_data='network_tron'),
-                types.InlineKeyboardButton("ðŸ’° Ø´Ø¨ÙƒØ© Ethereum", callback_data='network_ethereum')
+                types.InlineKeyboardButton("💵 شبكة TRON", callback_data='network_tron'),
+                types.InlineKeyboardButton("💰 شبكة Ethereum", callback_data='network_ethereum')
             )
-            keyboard.add(types.InlineKeyboardButton("ðŸ”™ Ø±Ø¬ÙˆØ¹", callback_data='recharge_balance'))
+            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
             bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
-                                  text="ðŸ‘‡ Ø§Ø®ØªØ± Ø´Ø¨ÙƒØ© Ø§Ù„Ø§ÙŠØ¯Ø§Ø¹ ðŸŒ Ø§Ù„Ù…Ù†Ø§Ø³Ø¨Ø© ðŸ‘‡:", reply_markup=keyboard)
+                                  text="👇 اختر شبكة الايداع 🌐 المناسبة 👇:", reply_markup=keyboard)
         elif call.data == 'network_tron' or call.data == 'network_ethereum':
             network = "TRON" if call.data == 'network_tron' else "Ethereum"
             keyboard = types.InlineKeyboardMarkup()
-            keyboard.add(types.InlineKeyboardButton("Ø§Ù„ØºØ§Ø¡", callback_data='cancel'))
+            keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                              text=f"âœ… ØªÙ… Ø§Ø®ØªÙŠØ§Ø± Ø´Ø¨ÙƒØ© {network} ðŸŒ.\n"
+                              text=f"✅ تم اختيار شبكة {network} 🌐.\n"
                                     "\n"
-                                    "ðŸ“¥ Ø¹Ù†ÙˆØ§Ù† Ø§Ù„Ø§ÙŠØ¯Ø§Ø¹:\n"
+                                    "📥 عنوان الايداع:\n"
                                     "\n"
                                     "TRGQMLpJru9ReRts5UjySEYFaguRccnmFd\n"
                                     "\n"
-                                    "âš ï¸ Ø§Ù„Ø­Ø¯ Ø§Ù„Ø§Ø¯Ù†Ù‰ Ù„Ù„Ø§ÙŠØ¯Ø§Ø¹ 10ðŸ’².\n"
+                                    "⚠️ الحد الادنى للايداع 10💲.\n"
                                     "\n"
-                                    "âš ï¸ ÙŠØ±Ø¬Ù‰ Ø¹Ø¯Ù… Ø§Ù„Ø§ÙŠØ¯Ø§Ø¹ Ù‚ÙŠÙ…Ø© Ø£Ù‚Ù„ Ù…Ù† Ø§Ù„Ø­Ø¯ Ø§Ù„Ø§Ø¯Ù†Ù‰\n"
+                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
                                     "\n"
                                     "\n"
-                                    "âœï¸ ÙŠØ±Ø¬Ù‰ Ø¥Ø¯Ø®Ø§Ù„ Ù‚ÙŠÙ…Ø© Ø§Ù„Ø¥ÙŠØ¯Ø§Ø¹ (Ø¨Ø§Ù„Ø£Ø±Ù‚Ø§Ù…) ðŸ”¢:",
+                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
         elif call.data == 'shamcash':
             network = "Sham Cash"
             keyboard = types.InlineKeyboardMarkup()
-            keyboard.add(types.InlineKeyboardButton("Ø§Ù„ØºØ§Ø¡", callback_data='cancel'))
+            keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                              text=f"âœ… ØªÙ… Ø§Ø®ØªÙŠØ§Ø± {network} ðŸŒ.\n\n"
-                                    "ðŸ“¥ Ø¹Ù†ÙˆØ§Ù† Ø§Ù„Ø§ÙŠØ¯Ø§Ø¹:\n"
+                              text=f"✅ تم اختيار {network} 🌐.\n\n"
+                                    "📥 عنوان الايداع:\n"
                                     "c1b8a366098c659729dd80d83bd498c4\n\n"
-                                    "âš ï¸ Ø§Ù„Ø­Ø¯ Ø§Ù„Ø§Ø¯Ù†Ù‰ Ù„Ù„Ø§ÙŠØ¯Ø§Ø¹ 1ðŸ’².\n"
-                                    "âš ï¸ ÙŠØ±Ø¬Ù‰ Ø¹Ø¯Ù… Ø§Ù„Ø§ÙŠØ¯Ø§Ø¹ Ù‚ÙŠÙ…Ø© Ø£Ù‚Ù„ Ù…Ù† Ø§Ù„Ø­Ø¯ Ø§Ù„Ø§Ø¯Ù†Ù‰\n\n"
-                                    "âœï¸ ÙŠØ±Ø¬Ù‰ Ø¥Ø¯Ø®Ø§Ù„ Ù‚ÙŠÙ…Ø© Ø§Ù„Ø¥ÙŠØ¯Ø§Ø¹ (Ø¨Ø§Ù„Ø£Ø±Ù‚Ø§Ù…) ðŸ”¢:",
+                                    "⚠️ الحد الادنى للايداع 1💲.\n"
+                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n\n"
+                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
 
         elif call.data == 'syriatelcash':
             network = "Syriatel Cash"
             keyboard = types.InlineKeyboardMarkup()
-            keyboard.add(types.InlineKeyboardButton("Ø§Ù„ØºØ§Ø¡", callback_data='cancel'))
+            keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                               text=f"âœ… ØªÙ… Ø§Ø®ØªÙŠØ§Ø± {network} ðŸŒ.\n"
+                               text=f"✅ تم اختيار {network} 🌐.\n"
                                     "\n"
-                                    "ðŸ“¥ Ø±Ù‚Ù… Ø§Ù„ØªØ­ÙˆÙŠÙ„ Ø§Ù„ÙŠØ¯ÙˆÙŠ:\n"
+                                    "📥 رقم التحويل اليدوي:\n"
                                     "\n"
                                     "0998028586\n"
                                     "\n"
-                                    "âš ï¸ Ø§Ù„Ø­Ø¯ Ø§Ù„Ø§Ø¯Ù†Ù‰ Ù„Ù„Ø§ÙŠØ¯Ø§Ø¹ 5000 Ù„.Ø³.\n"
+                                    "⚠️ الحد الادنى للايداع 5000 ل.س.\n"
                                     "\n"
-                                    "âš ï¸ ÙŠØ±Ø¬Ù‰ Ø¹Ø¯Ù… Ø§Ù„Ø§ÙŠØ¯Ø§Ø¹ Ù‚ÙŠÙ…Ø© Ø£Ù‚Ù„ Ù…Ù† Ø§Ù„Ø­Ø¯ Ø§Ù„Ø§Ø¯Ù†Ù‰\n"
+                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
                                     "\n"
                                     "\n"
-                                    "âœï¸ ÙŠØ±Ø¬Ù‰ Ø¥Ø¯Ø®Ø§Ù„ Ù‚ÙŠÙ…Ø© Ø§Ù„Ø¥ÙŠØ¯Ø§Ø¹ (Ø¨Ø§Ù„Ø£Ø±Ù‚Ø§Ù…) ðŸ”¢:",
+                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
         elif call.data == 'cancel':
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                text="âœ… ØªÙ… Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ø¹Ù…Ù„ÙŠØ©.",
+                text="✅ تم إلغاء العملية.",
                 reply_markup=types.InlineKeyboardMarkup().add(
-                    types.InlineKeyboardButton("ðŸ”™ Ø±Ø¬ÙˆØ¹ Ø¥Ù„Ù‰ Ø§Ù„ÙˆØ§Ø¬Ù‡Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©", callback_data='main_menu')
+                    types.InlineKeyboardButton("🔙 رجوع إلى الواجهة الرئيسية", callback_data='main_menu')
                 )
             )
             bot.clear_step_handler(call.message)
@@ -823,14 +823,14 @@ def handle_query(call):
                     deposit_amount = res.data.get("deposit_amount", 0)
                     update_balance(user_id_req, deposit_amount)
                     update_request_status(request_id, 'Accepted')
-                    bot.send_message(user_id_req, f"âœ… ØªÙ… Ù‚Ø¨ÙˆÙ„ Ø§Ù„Ø¥ÙŠØ¯Ø§Ø¹! ØªÙ… Ø¥Ø¶Ø§ÙØ© {deposit_amount} USD Ø¥Ù„Ù‰ Ø±ØµÙŠØ¯Ùƒ.")
+                    bot.send_message(user_id_req, f"✅ تم قبول الإيداع! تم إضافة {deposit_amount} USD إلى رصيدك.")
                     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          text="âœ… ØªÙ…Øª Ù…Ø¹Ø§Ù„Ø¬Ø© Ø§Ù„Ø·Ù„Ø¨ Ø¨Ø§Ù„Ù…ÙˆØ§ÙÙ‚Ø©.")
+                                          text="✅ تمت معالجة الطلب بالموافقة.")
                 else:
-                    bot.send_message(call.message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£: Ø§Ù„Ø·Ù„Ø¨ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.")
+                    bot.send_message(call.message.chat.id, "⚠️ حدث خطأ: الطلب غير موجود.")
             except Exception as e:
                 logger.error(f"Error accepting recharge request {request_id}: {e}")
-                bot.send_message(call.message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ù…Ø¹Ø§Ù„Ø¬Ø© Ø§Ù„Ø·Ù„Ø¨.")
+                bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء معالجة الطلب.")
         elif call.data.startswith('reject_'):
             request_id = int(call.data.split('_')[1])
             try:
@@ -838,14 +838,14 @@ def handle_query(call):
                 if res.data:
                     user_id_req = res.data.get("user_id")
                     update_request_status(request_id, 'Rejected')
-                    bot.send_message(user_id_req, "âŽ ØªÙ… Ø±ÙØ¶ Ø§Ù„Ø¥ÙŠØ¯Ø§Ø¹. ÙŠØ±Ø¬Ù‰ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù…Ø±Ø© Ø£Ø®Ø±Ù‰.")
+                    bot.send_message(user_id_req, "❎ تم رفض الإيداع. يرجى المحاولة مرة أخرى.")
                     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          text="âŽ ØªÙ…Øª Ù…Ø¹Ø§Ù„Ø¬Ø© Ø§Ù„Ø·Ù„Ø¨ Ø¨Ø§Ù„Ø±ÙØ¶.")
+                                          text="❎ تمت معالجة الطلب بالرفض.")
                 else:
-                    bot.send_message(call.message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£: Ø§Ù„Ø·Ù„Ø¨ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.")
+                    bot.send_message(call.message.chat.id, "⚠️ حدث خطأ: الطلب غير موجود.")
             except Exception as e:
                 logger.error(f"Error rejecting recharge request {request_id}: {e}")
-                bot.send_message(call.message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ù…Ø¹Ø§Ù„Ø¬Ø© Ø§Ù„Ø·Ù„Ø¨.")
+                bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء معالجة الطلب.")
     except Exception as e:
         logger.error(f"Error in handle_query: {e}")
 
@@ -865,52 +865,52 @@ def handle_deposit(message, network):
             try:
                 amount_syp = float(message.text)
             except ValueError:
-                bot.send_message(message.chat.id, "âš ï¸ Ø§Ù„Ø±Ø¬Ø§Ø¡ Ø¥Ø¯Ø®Ø§Ù„ Ø±Ù‚Ù… ØµØ­ÙŠØ­ Ù„Ù„Ù…Ø¨Ù„Øº Ø¨Ø§Ù„Ù„ÙŠØ±Ø© Ø§Ù„Ø³ÙˆØ±ÙŠØ©.")
+                bot.send_message(message.chat.id, "⚠️ الرجاء إدخال رقم صحيح للمبلغ بالليرة السورية.")
                 return bot.register_next_step_handler(message, handle_deposit, network)
 
             # convert to USD
             deposit_amount = round(amount_syp / usd_rate, 2)
             bot.send_message(
                 message.chat.id,
-                f"ðŸ’° Ø§Ù„Ù…Ø¨Ù„Øº Ø¨Ø§Ù„Ù„ÙŠØ±Ø©: {amount_syp} Ù„.Ø³\n"
-                f"ðŸ’µ Ø³Ø¹Ø± Ø§Ù„Ø¯ÙˆÙ„Ø§Ø± Ø§Ù„Ø­Ø§Ù„ÙŠ: {usd_rate} Ù„.Ø³\n"
-                f"âž¡ï¸ Ø§Ù„Ù…Ø¨Ù„Øº Ø§Ù„Ù…Ø­ÙˆÙ‘Ù„: {deposit_amount} USD\n\n"
-                "ðŸ“Œ Ø§Ù„Ø¢Ù† Ø£Ø±Ø³Ù„ Ø±Ù‚Ù… Ø§Ù„Ø¹Ù…Ù„ÙŠØ© Ø£Ùˆ ØµÙˆØ±Ø© Ø§Ù„ØªØ­ÙˆÙŠÙ„:"
+                f"💰 المبلغ بالليرة: {amount_syp} ل.س\n"
+                f"💵 سعر الدولار الحالي: {usd_rate} ل.س\n"
+                f"➡️ المبلغ المحوّل: {deposit_amount} USD\n\n"
+                "📌 الآن أرسل رقم العملية أو صورة التحويل:"
             )
             return bot.register_next_step_handler(message, handle_transaction, deposit_amount, network)
         else:
             # Default behavior: interpret input as USD amount
             deposit_amount = float(message.text)
-            bot.send_message(message.chat.id, "Ù…Ù† ÙØ¶Ù„Ùƒ Ø£Ø±Ø³Ù„ Ø±Ù‚Ù… Ø§Ù„Ù…Ø¹Ø§Ù…Ù„Ø© (TxId) ðŸ†” Ø§Ùˆ Ù„Ù‚Ø·Ø© Ø´Ø§Ø´Ø© Ù„Ù…Ø¹Ø§Ù…Ù„Ø© Ø§Ù„Ø§ÙŠØ¯Ø§Ø¹ ðŸ–¼ï¸:")
+            bot.send_message(message.chat.id, "من فضلك أرسل رقم المعاملة (TxId) 🆔 او لقطة شاشة لمعاملة الايداع 🖼️:")
             return bot.register_next_step_handler(message, handle_transaction, deposit_amount, network)
     except ValueError:
-        bot.send_message(message.chat.id, "âš ï¸ Ø§Ù„Ø±Ø¬Ø§Ø¡ Ø¥Ø¯Ø®Ø§Ù„ Ø±Ù‚Ù… ØµØ­ÙŠØ­.")
+        bot.send_message(message.chat.id, "⚠️ الرجاء إدخال رقم صحيح.")
         return bot.register_next_step_handler(message, handle_deposit, network)
     except Exception as e:
         logger.error(f"Error in handle_deposit: {e}")
-        bot.send_message(message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ù…Ø¹Ø§Ù„Ø¬Ø© Ø§Ù„Ø¥ÙŠØ¯Ø§Ø¹. ÙŠØ±Ø¬Ù‰ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù„Ø§Ø­Ù‚Ù‹Ø§.")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء معالجة الإيداع. يرجى المحاولة لاحقًا.")
 def handle_transaction(message, deposit_amount, network):
     transaction_id = message.text
     request_id = add_recharge_request(message.chat.id, deposit_amount, transaction_id)
     if request_id:
         back_button = types.InlineKeyboardMarkup(row_width=1)
-        back_button.add(types.InlineKeyboardButton("ðŸ”™ Ø±Ø¬ÙˆØ¹ Ø¥Ù„Ù‰ Ø§Ù„ÙˆØ§Ø¬Ù‡Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©", callback_data='main_menu'))
-        bot.send_message(message.chat.id, f"âœ… ØªÙ… Ø¥Ø±Ø³Ø§Ù„ Ø·Ù„Ø¨Ùƒ Ù„Ø´Ø­Ù† Ø±ØµÙŠØ¯ {deposit_amount} USD Ø¹Ø¨Ø± Ø´Ø¨ÙƒØ© {network} ðŸŒ.",
+        back_button.add(types.InlineKeyboardButton("🔙 رجوع إلى الواجهة الرئيسية", callback_data='main_menu'))
+        bot.send_message(message.chat.id, f"✅ تم إرسال طلبك لشحن رصيد {deposit_amount} USD عبر شبكة {network} 🌐.",
                          reply_markup=back_button)
         send_to_admin(request_id, message.chat.id, deposit_amount, transaction_id, network, message)
     else:
-        bot.send_message(message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ù…Ø¹Ø§Ù„Ø¬Ø© Ø·Ù„Ø¨Ùƒ. ÙŠØ±Ø¬Ù‰ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù„Ø§Ø­Ù‚Ù‹Ø§.")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء معالجة طلبك. يرجى المحاولة لاحقًا.")
 
 def send_to_admin(request_id, user_id, deposit_amount, transaction_id, network, message):
     try:
         user = bot.get_chat(user_id)
         admin_message = (
-            f"Ø·Ù„Ø¨ Ø´Ø­Ù† Ø¬Ø¯ÙŠØ¯:\n"
-            f"Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…: @{user.username}\n"
-            f"Ø§Ù„Ù…Ø¹Ø±Ù: {user_id}\n"
-            f"Ø§Ù„Ù…Ø¨Ù„Øº: {deposit_amount} USD\n"
-            f"Ø±Ù‚Ù… Ø§Ù„Ù…Ø¹Ø§Ù…Ù„Ø©: {transaction_id}\n"
-            f"Ø§Ù„Ø´Ø¨ÙƒØ©: {network}\n"
+            f"طلب شحن جديد:\n"
+            f"المستخدم: @{user.username}\n"
+            f"المعرف: {user_id}\n"
+            f"المبلغ: {deposit_amount} USD\n"
+            f"رقم المعاملة: {transaction_id}\n"
+            f"الشبكة: {network}\n"
         )
         if message.photo:
             bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=admin_message)
@@ -918,65 +918,65 @@ def send_to_admin(request_id, user_id, deposit_amount, transaction_id, network, 
             bot.send_message(ADMIN_ID, admin_message)
         keyboard = types.InlineKeyboardMarkup(row_width=2)
         keyboard.add(
-            types.InlineKeyboardButton("Ù‚Ø¨ÙˆÙ„", callback_data=f'accept_{request_id}'),
-            types.InlineKeyboardButton("Ø±ÙØ¶", callback_data=f'reject_{request_id}')
+            types.InlineKeyboardButton("قبول", callback_data=f'accept_{request_id}'),
+            types.InlineKeyboardButton("رفض", callback_data=f'reject_{request_id}')
         )
-        bot.send_message(ADMIN_ID, "Ø§Ø®ØªØ± Ù…Ø§ Ø¥Ø°Ø§ ÙƒÙ†Øª ØªØ±ØºØ¨ ÙÙŠ Ù‚Ø¨ÙˆÙ„ Ø£Ùˆ Ø±ÙØ¶ Ø§Ù„Ø·Ù„Ø¨.", reply_markup=keyboard)
+        bot.send_message(ADMIN_ID, "اختر ما إذا كنت ترغب في قبول أو رفض الطلب.", reply_markup=keyboard)
     except Exception as e:
         logger.error(f"Error sending to admin: {e}")
 
 @bot.message_handler(commands=['add_offer'])
 def add_offer(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "Ù‡Ø°Ø§ Ø§Ù„Ø£Ù…Ø± Ù…Ø®ØµØµ Ù„Ù„Ø£Ø¯Ù…Ù† ÙÙ‚Ø·!")
+        bot.send_message(message.chat.id, "هذا الأمر مخصص للأدمن فقط!")
         return
-    msg = bot.send_message(message.chat.id, "âœï¸ Ø£Ø¯Ø®Ù„ Ø§Ø³Ù… Ø§Ù„Ø¹Ø±Ø¶:")
+    msg = bot.send_message(message.chat.id, "✏️ أدخل اسم العرض:")
     bot.register_next_step_handler(msg, get_offer_name)
 
 def get_offer_name(message):
     name = message.text.strip()
     if not name:
-        bot.send_message(message.chat.id, "âš ï¸ Ø§Ø³Ù… Ø§Ù„Ø¹Ø±Ø¶ Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø£Ù† ÙŠÙƒÙˆÙ† ÙØ§Ø±ØºÙ‹Ø§.")
+        bot.send_message(message.chat.id, "⚠️ اسم العرض لا يمكن أن يكون فارغًا.")
         return
-    msg = bot.send_message(message.chat.id, "âœï¸ Ø£Ø¯Ø®Ù„ ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø¹Ø±Ø¶:")
+    msg = bot.send_message(message.chat.id, "✏️ أدخل تفاصيل العرض:")
     bot.register_next_step_handler(msg, get_offer_details, name)
 
 def get_offer_details(message, name):
     details = message.text.strip()
     if not details:
-        bot.send_message(message.chat.id, "âš ï¸ ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø¹Ø±Ø¶ Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø£Ù† ØªÙƒÙˆÙ† ÙØ§Ø±ØºØ©.")
+        bot.send_message(message.chat.id, "⚠️ تفاصيل العرض لا يمكن أن تكون فارغة.")
         return
-    msg = bot.send_message(message.chat.id, "âœï¸ Ø£Ø¯Ø®Ù„ Ø³Ø¹Ø± Ø§Ù„Ø¹Ø±Ø¶:")
+    msg = bot.send_message(message.chat.id, "✏️ أدخل سعر العرض:")
     bot.register_next_step_handler(msg, get_offer_price, name, details)
 
 def get_offer_price(message, name, details):
     try:
         price = float(message.text.strip())
         if price <= 0:
-            bot.send_message(message.chat.id, "âš ï¸ ÙŠØ¬Ø¨ Ø£Ù† ÙŠÙƒÙˆÙ† Ø§Ù„Ø³Ø¹Ø± Ø£ÙƒØ¨Ø± Ù…Ù† ØµÙØ±.")
+            bot.send_message(message.chat.id, "⚠️ يجب أن يكون السعر أكبر من صفر.")
             return
-        msg = bot.send_message(message.chat.id, "âœï¸ Ø£Ø¯Ø®Ù„ Ø§Ù„ÙƒÙ…ÙŠØ© Ø§Ù„Ù…ØªØ§Ø­Ø©:")
+        msg = bot.send_message(message.chat.id, "✏️ أدخل الكمية المتاحة:")
         bot.register_next_step_handler(msg, get_offer_quantity, name, details, price)
     except ValueError:
-        bot.send_message(message.chat.id, "âš ï¸ Ø£Ø¯Ø®Ù„ Ø±Ù‚Ù…Ù‹Ø§ ØµØ­ÙŠØ­Ù‹Ø§ Ù„Ù„Ø³Ø¹Ø±.")
+        bot.send_message(message.chat.id, "⚠️ أدخل رقمًا صحيحًا للسعر.")
 
 def get_offer_quantity(message, name, details, price):
     try:
         quantity = int(message.text.strip())
         if quantity <= 0:
-            bot.send_message(message.chat.id, "âš ï¸ Ø§Ù„ÙƒÙ…ÙŠØ© ÙŠØ¬Ø¨ Ø£Ù† ØªÙƒÙˆÙ† Ø£ÙƒØ¨Ø± Ù…Ù† ØµÙØ±.")
+            bot.send_message(message.chat.id, "⚠️ الكمية يجب أن تكون أكبر من صفر.")
             return
-        msg = bot.send_message(message.chat.id, "ðŸ“‚ Ø£Ø¯Ø®Ù„ Ù‚Ø³Ù… Ø§Ù„Ø¹Ø±Ø¶ (Ù…Ø«Ø§Ù„: Ø´Ø­Ù† Ø£Ù„Ø¹Ø§Ø¨ØŒ ØªØ·Ø¨ÙŠÙ‚Ø§ØªØŒ Ø¨Ø·Ø§Ù‚Ø§Øª):")
+        msg = bot.send_message(message.chat.id, "📂 أدخل قسم العرض (مثال: شحن ألعاب، تطبيقات، بطاقات):")
         bot.register_next_step_handler(msg, get_offer_category, name, details, price, quantity)
     except ValueError:
-        bot.send_message(message.chat.id, "âœï¸ Ø£Ø¯Ø®Ù„ Ø±Ù‚Ù…Ù‹Ø§ ØµØ­ÙŠØ­Ù‹Ø§ Ù„Ù„ÙƒÙ…ÙŠØ©.")
+        bot.send_message(message.chat.id, "✏️ أدخل رقمًا صحيحًا للكمية.")
 
 def get_offer_category(message, name, details, price, quantity):
     category = message.text.strip()
     if not category:
-        bot.send_message(message.chat.id, "âš ï¸ Ù„Ø§ ÙŠÙ…ÙƒÙ† ØªØ±Ùƒ Ø§Ù„Ù‚Ø³Ù… ÙØ§Ø±ØºÙ‹Ø§.")
+        bot.send_message(message.chat.id, "⚠️ لا يمكن ترك القسم فارغًا.")
         return
-    msg = bot.send_message(message.chat.id, "ðŸ–¼ï¸ Ø£Ø±Ø³Ù„ ØµÙˆØ±Ø© Ø§Ù„Ø¹Ø±Ø¶ (Ø§Ø®ØªÙŠØ§Ø±ÙŠ):")
+    msg = bot.send_message(message.chat.id, "🖼️ أرسل صورة العرض (اختياري):")
     bot.register_next_step_handler(msg, get_offer_image, name, details, price, quantity, category)
 
 def get_offer_image(message, name, details, price, quantity, category):
@@ -990,34 +990,34 @@ def get_offer_image(message, name, details, price, quantity, category):
             "category": category,
             "image": image
         }).execute()
-        bot.send_message(message.chat.id, "âœ… ØªÙ… Ø¥Ø¶Ø§ÙØ© Ø§Ù„Ø¹Ø±Ø¶ Ø¨Ù†Ø¬Ø§Ø­ Ù…Ø¹ Ø§Ù„Ù‚Ø³Ù….")
+        bot.send_message(message.chat.id, "✅ تم إضافة العرض بنجاح مع القسم.")
     except Exception as e:
         logger.error(f"Error adding offer: {e}")
-        bot.send_message(message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ø¥Ø¶Ø§ÙØ© Ø§Ù„Ø¹Ø±Ø¶. ÙŠØ±Ø¬Ù‰ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù„Ø§Ø­Ù‚Ù‹Ø§.")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء إضافة العرض. يرجى المحاولة لاحقًا.")
 
 
 
 @bot.message_handler(commands=['set_usd_rate'])
 def set_usd_rate(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "ðŸš« Ù‡Ø°Ø§ Ø§Ù„Ø£Ù…Ø± Ù„Ù„Ø£Ø¯Ù…Ù† ÙÙ‚Ø·")
+        bot.send_message(message.chat.id, "🚫 هذا الأمر للأدمن فقط")
         return
-    msg = bot.send_message(message.chat.id, "ðŸ’² Ø£Ø¯Ø®Ù„ Ø³Ø¹Ø± Ø§Ù„Ø¯ÙˆÙ„Ø§Ø± Ù…Ù‚Ø§Ø¨Ù„ Ø§Ù„Ù„ÙŠØ±Ø© (Ù…Ø«Ø§Ù„: 15000):")
+    msg = bot.send_message(message.chat.id, "💲 أدخل سعر الدولار مقابل الليرة (مثال: 15000):")
     bot.register_next_step_handler(msg, save_usd_rate)
 
 def save_usd_rate(message):
     try:
         rate = float(message.text.strip())
         set_setting("usd_rate", str(rate))
-        bot.send_message(message.chat.id, f"âœ… ØªÙ… ØªØ­Ø¯ÙŠØ« Ø³Ø¹Ø± Ø§Ù„Ø¯ÙˆÙ„Ø§Ø± Ø¥Ù„Ù‰: {rate} Ù„.Ø³")
+        bot.send_message(message.chat.id, f"✅ تم تحديث سعر الدولار إلى: {rate} ل.س")
     except Exception:
-        bot.send_message(message.chat.id, "âš ï¸ Ø§Ù„Ø±Ø¬Ø§Ø¡ Ø¥Ø¯Ø®Ø§Ù„ Ø±Ù‚Ù… ØµØ­ÙŠØ­.")
+        bot.send_message(message.chat.id, "⚠️ الرجاء إدخال رقم صحيح.")
 
 
 @bot.message_handler(commands=['set_address'])
 def set_address(message):
     if message.from_user.id != ADMIN_ID:
-        return bot.send_message(message.chat.id, "ðŸš« Ù‡Ø°Ø§ Ø§Ù„Ø£Ù…Ø± Ù„Ù„Ø£Ø¯Ù…Ù† ÙÙ‚Ø·")
+        return bot.send_message(message.chat.id, "🚫 هذا الأمر للأدمن فقط")
     keyboard = types.InlineKeyboardMarkup()
     keyboard.add(
         types.InlineKeyboardButton("USDT TRON", callback_data="editaddr_tron"),
@@ -1027,16 +1027,16 @@ def set_address(message):
         types.InlineKeyboardButton("Syriatel", callback_data="editaddr_syriatel"),
         types.InlineKeyboardButton("Sham Cash", callback_data="editaddr_sham")
     )
-    bot.send_message(message.chat.id, "Ø§Ø®ØªØ± Ø§Ù„ÙˆØ³ÙŠÙ„Ø© Ø§Ù„ØªÙŠ ØªØ±ÙŠØ¯ ØªØ¹Ø¯ÙŠÙ„ Ø¹Ù†ÙˆØ§Ù†Ù‡Ø§:", reply_markup=keyboard)
+    bot.send_message(message.chat.id, "اختر الوسيلة التي تريد تعديل عنوانها:", reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("editaddr_"))
 def edit_address_start(call):
     if call.from_user.id != ADMIN_ID:
-        bot.answer_callback_query(call.id, "âš ï¸ Ù‡Ø°Ø§ Ø§Ù„Ø£Ù…Ø± Ù…Ø®ØµØµ Ù„Ù„Ø£Ø¯Ù…Ù† ÙÙ‚Ø·!", show_alert=True)
+        bot.answer_callback_query(call.id, "⚠️ هذا الأمر مخصص للأدمن فقط!", show_alert=True)
         return
     method = call.data.replace("editaddr_", "")
-    msg = bot.send_message(call.message.chat.id, f"âœï¸ Ø£Ø¯Ø®Ù„ Ø§Ù„Ø¹Ù†ÙˆØ§Ù† Ø§Ù„Ø¬Ø¯ÙŠØ¯ Ù„Ù€ {method}:")
+    msg = bot.send_message(call.message.chat.id, f"✏️ أدخل العنوان الجديد لـ {method}:")
     bot.register_next_step_handler(msg, save_new_address, method)
 
 
@@ -1050,29 +1050,29 @@ def save_new_address(message, method):
     }
     key = keys.get(method)
     if not key:
-        return bot.send_message(message.chat.id, "âŒ Ø®Ø·Ø£ Ø¯Ø§Ø®Ù„ÙŠ!")
+        return bot.send_message(message.chat.id, "❌ خطأ داخلي!")
     set_setting(key, new_value)
-    bot.send_message(message.chat.id, f"âœ… ØªÙ… ØªØ­Ø¯ÙŠØ« Ø¹Ù†ÙˆØ§Ù† {method} Ø¨Ù†Ø¬Ø§Ø­!")
+    bot.send_message(message.chat.id, f"✅ تم تحديث عنوان {method} بنجاح!")
 @bot.message_handler(commands=['show_users'])
 def show_users(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "ðŸš« Ù‡Ø°Ø§ Ø§Ù„Ø£Ù…Ø± Ù…Ø®ØµØµ Ù„Ù„Ø£Ø¯Ù…Ù† ÙÙ‚Ø·!")
+        bot.send_message(message.chat.id, "🚫 هذا الأمر مخصص للأدمن فقط!")
         return
     try:
         res = supabase.table("users").select("user_id", "username", "balance").execute()
         users = res.data or []
         if not users:
-            bot.send_message(message.chat.id, "âŒ Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ù…Ø³ØªØ®Ø¯Ù…ÙˆÙ† ÙÙŠ Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª.")
+            bot.send_message(message.chat.id, "❌ لا يوجد مستخدمون في قاعدة البيانات.")
             return
         user_count = len(users)
-        response = f"Ø¹Ø¯Ø¯ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ†: {user_count}\n\n"
+        response = f"عدد المستخدمين: {user_count}\n\n"
         for u in users:
             user_id = u.get("user_id")
             username = u.get("username")
             balance = u.get("balance") or 0
-            response += (f"Ù…Ø¹Ø±Ù Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…: {user_id}\n"
-                         f"Ø§Ø³Ù… Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…: {username if username else 'ØºÙŠØ± Ù…ØªÙˆÙØ±'}\n"
-                         f"Ø§Ù„Ø±ØµÙŠØ¯: {balance:.2f}\n"
+            response += (f"معرف المستخدم: {user_id}\n"
+                         f"اسم المستخدم: {username if username else 'غير متوفر'}\n"
+                         f"الرصيد: {balance:.2f}\n"
                          "--------------------------\n")
         if len(response) > 4096:
             for i in range(0, len(response), 4096):
@@ -1080,126 +1080,126 @@ def show_users(message):
         else:
             bot.send_message(message.chat.id, response)
     except Exception as e:
-        bot.send_message(message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ø§Ø³ØªØ±Ø¯Ø§Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ†.")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء استرداد بيانات المستخدمين.")
         logger.error(f"Error fetching users: {e}")
 
 @bot.message_handler(commands=['update_balance'])
 def update_user_balance(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "ðŸš« Ù‡Ø°Ø§ Ø§Ù„Ø£Ù…Ø± Ù…Ø®ØµØµ Ù„Ù„Ø£Ø¯Ù…Ù† ÙÙ‚Ø·!")
+        bot.send_message(message.chat.id, "🚫 هذا الأمر مخصص للأدمن فقط!")
         return
-    msg = bot.send_message(message.chat.id, "âœï¸ Ø£Ø¯Ø®Ù„ Ù…Ø¹Ø±Ù Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… ÙˆØ§Ù„Ù…Ø¨Ù„Øº (Ø§Ø³ØªØ®Ø¯Ø§Ù… Ø§Ù„ØªÙ†Ø³ÙŠÙ‚: user_id amount).\n"
-                                            "Ù…Ø«Ø§Ù„: 123456789 50 Ù„Ø¥Ø¶Ø§ÙØ© 50ØŒ Ø£Ùˆ 123456789 -30 Ù„Ø®ØµÙ… 30.")
+    msg = bot.send_message(message.chat.id, "✏️ أدخل معرف المستخدم والمبلغ (استخدام التنسيق: user_id amount).\n"
+                                            "مثال: 123456789 50 لإضافة 50، أو 123456789 -30 لخصم 30.")
     bot.register_next_step_handler(msg, process_balance_update)
 
 def process_balance_update(message):
     try:
         user_input = message.text.split()
         if len(user_input) != 2:
-            bot.send_message(message.chat.id, "âš ï¸ ØµÙŠØºØ© Ø§Ù„Ø¥Ø¯Ø®Ø§Ù„ ØºÙŠØ± ØµØ­ÙŠØ­Ø©. ÙŠØ±Ø¬Ù‰ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù…Ø¬Ø¯Ø¯Ù‹Ø§.")
+            bot.send_message(message.chat.id, "⚠️ صيغة الإدخال غير صحيحة. يرجى المحاولة مجددًا.")
             return
         user_id = int(user_input[0])
         amount = float(user_input[1])
-        # ØªØ­Ø¯ÙŠØ« Ø§Ù„Ø±ØµÙŠØ¯
+        # تحديث الرصيد
         res = supabase.table("users").select("balance").eq("user_id", user_id).single().execute()
         user = res.data
         if not user:
-            bot.send_message(message.chat.id, f"âŽ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø¨Ù…Ø¹Ø±Ù {user_id} ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.")
+            bot.send_message(message.chat.id, f"❎ المستخدم بمعرف {user_id} غير موجود.")
             return
         new_balance = (user.get("balance") or 0) + amount
         if new_balance < 0:
-            bot.send_message(message.chat.id, f"âŒ Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø®ØµÙ… {abs(amount):.2f} Ù„Ø£Ù† Ø§Ù„Ø±ØµÙŠØ¯ Ø§Ù„Ø­Ø§Ù„ÙŠ ({user.get('balance',0):.2f}) Ù„Ø§ ÙŠÙƒÙÙŠ.")
+            bot.send_message(message.chat.id, f"❌ لا يمكن خصم {abs(amount):.2f} لأن الرصيد الحالي ({user.get('balance',0):.2f}) لا يكفي.")
             return
         supabase.table("users").update({"balance": new_balance}).eq("user_id", user_id).execute()
-        bot.send_message(message.chat.id, f"âœ… ØªÙ… ØªØ­Ø¯ÙŠØ« Ø§Ù„Ø±ØµÙŠØ¯ Ø¨Ù†Ø¬Ø§Ø­.\nØ§Ù„Ø±ØµÙŠØ¯ Ø§Ù„Ø¬Ø¯ÙŠØ¯ Ù„Ù„Ù…Ø³ØªØ®Ø¯Ù… {user_id}: {new_balance:.2f}")
+        bot.send_message(message.chat.id, f"✅ تم تحديث الرصيد بنجاح.\nالرصيد الجديد للمستخدم {user_id}: {new_balance:.2f}")
     except ValueError:
-        bot.send_message(message.chat.id, "âš ï¸ ÙŠØ±Ø¬Ù‰ Ø§Ù„ØªØ£ÙƒØ¯ Ù…Ù† Ø¥Ø¯Ø®Ø§Ù„ Ø§Ù„Ù…Ø¹Ø±Ù ÙˆØ§Ù„Ù…Ø¨Ù„Øº Ø¨Ø´ÙƒÙ„ ØµØ­ÙŠØ­.")
+        bot.send_message(message.chat.id, "⚠️ يرجى التأكد من إدخال المعرف والمبلغ بشكل صحيح.")
     except Exception as e:
-        bot.send_message(message.chat.id, "âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ ØªØ­Ø¯ÙŠØ« Ø§Ù„Ø±ØµÙŠØ¯. ÙŠØ±Ø¬Ù‰ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù„Ø§Ø­Ù‚Ù‹Ø§.")
+        bot.send_message(message.chat.id, "⚠️ حدث خطأ أثناء تحديث الرصيد. يرجى المحاولة لاحقًا.")
         logger.error(f"Error updating balance: {e}")
 
 @bot.message_handler(commands=['send_message'])
 def send_message_to_user(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "ðŸš« Ù‡Ø°Ø§ Ø§Ù„Ø£Ù…Ø± Ù…Ø®ØµØµ Ù„Ù„Ø£Ø¯Ù…Ù† ÙÙ‚Ø·!")
+        bot.send_message(message.chat.id, "🚫 هذا الأمر مخصص للأدمن فقط!")
         return
-    msg = bot.send_message(message.chat.id, "âœï¸ Ø£Ø¯Ø®Ù„ Ù…Ø¹Ø±Ù Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… ÙˆØ§Ù„Ø±Ø³Ø§Ù„Ø© (Ø§Ø³ØªØ®Ø¯Ø§Ù… Ø§Ù„ØªÙ†Ø³ÙŠÙ‚: user_id message).\n"
-                                            "Ù…Ø«Ø§Ù„: 123456789 Ù…Ø±Ø­Ø¨Ù‹Ø§ØŒ Ù‡Ø°Ø§ Ø§Ø®ØªØ¨Ø§Ø±.")
+    msg = bot.send_message(message.chat.id, "✏️ أدخل معرف المستخدم والرسالة (استخدام التنسيق: user_id message).\n"
+                                            "مثال: 123456789 مرحبًا، هذا اختبار.")
     bot.register_next_step_handler(msg, process_message_to_user)
 
 def process_message_to_user(message):
     try:
         user_input = message.text.split(maxsplit=1)
         if len(user_input) != 2:
-            bot.send_message(message.chat.id, "âš ï¸ ØµÙŠØºØ© Ø§Ù„Ø¥Ø¯Ø®Ø§Ù„ ØºÙŠØ± ØµØ­ÙŠØ­Ø©. ÙŠØ±Ø¬Ù‰ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù…Ø¬Ø¯Ø¯Ù‹Ø§.")
+            bot.send_message(message.chat.id, "⚠️ صيغة الإدخال غير صحيحة. يرجى المحاولة مجددًا.")
             return
         user_id = int(user_input[0])
         user_message = user_input[1]
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("Ø±Ø¯ Ø¹Ù„Ù‰ Ø§Ù„Ø¥Ø¯Ø§Ø±Ø© ðŸ“©", callback_data=f"reply_to_admin_{message.chat.id}"))
+        markup.add(InlineKeyboardButton("رد على الإدارة 📩", callback_data=f"reply_to_admin_{message.chat.id}"))
         bot.send_message(user_id, user_message, reply_markup=markup)
-        bot.send_message(message.chat.id, f"âœ… ØªÙ… Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ø±Ø³Ø§Ù„Ø© Ø¥Ù„Ù‰ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… {user_id}.")
+        bot.send_message(message.chat.id, f"✅ تم إرسال الرسالة إلى المستخدم {user_id}.")
     except ValueError:
-        bot.send_message(message.chat.id, "âš ï¸ ÙŠØ±Ø¬Ù‰ Ø§Ù„ØªØ£ÙƒØ¯ Ù…Ù† Ø¥Ø¯Ø®Ø§Ù„ Ø§Ù„Ù…Ø¹Ø±Ù ÙˆØ§Ù„Ø±Ø³Ø§Ù„Ø© Ø¨Ø´ÙƒÙ„ ØµØ­ÙŠØ­.")
+        bot.send_message(message.chat.id, "⚠️ يرجى التأكد من إدخال المعرف والرسالة بشكل صحيح.")
     except telebot.apihelper.ApiTelegramException as e:
-        bot.send_message(message.chat.id, f"âš ï¸ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ø±Ø³Ø§Ù„Ø©: {e}")
+        bot.send_message(message.chat.id, f"⚠️ حدث خطأ أثناء إرسال الرسالة: {e}")
 
 @bot.message_handler(commands=['ban_user'])
 def ban_user(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "Ù‡Ø°Ø§ Ø§Ù„Ø£Ù…Ø± Ù…Ø®ØµØµ Ù„Ù„Ø£Ø¯Ù…Ù† ÙÙ‚Ø·!")
+        bot.send_message(message.chat.id, "هذا الأمر مخصص للأدمن فقط!")
         return
-    msg = bot.send_message(message.chat.id, "Ø£Ø¯Ø®Ù„ Ù…Ø¹Ø±Ù Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø§Ù„Ø°ÙŠ ØªØ±ÙŠØ¯ Ø­Ø¸Ø±Ù‡:")
+    msg = bot.send_message(message.chat.id, "أدخل معرف المستخدم الذي تريد حظره:")
     bot.register_next_step_handler(msg, process_ban_user)
 
 def process_ban_user(message):
     try:
         user_id = int(message.text)
         supabase.table("banned_users").insert({"user_id": user_id}).execute()
-        bot.send_message(message.chat.id, f"ØªÙ… Ø­Ø¸Ø± Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… {user_id}.")
+        bot.send_message(message.chat.id, f"تم حظر المستخدم {user_id}.")
     except ValueError:
-        bot.send_message(message.chat.id, "ÙŠØ±Ø¬Ù‰ Ø¥Ø¯Ø®Ø§Ù„ Ù…Ø¹Ø±Ù Ù…Ø³ØªØ®Ø¯Ù… ØµØ­ÙŠØ­.")
+        bot.send_message(message.chat.id, "يرجى إدخال معرف مستخدم صحيح.")
     except Exception as e:
-        bot.send_message(message.chat.id, "Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ø­Ø¸Ø± Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù….")
+        bot.send_message(message.chat.id, "حدث خطأ أثناء حظر المستخدم.")
         logger.error(f"Error banning user: {e}")
 
 @bot.message_handler(commands=['unban_user'])
 def unban_user(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "ðŸš« Ù‡Ø°Ø§ Ø§Ù„Ø£Ù…Ø± Ù…Ø®ØµØµ Ù„Ù„Ø£Ø¯Ù…Ù† ÙÙ‚Ø·!")
+        bot.send_message(message.chat.id, "🚫 هذا الأمر مخصص للأدمن فقط!")
         return
-    msg = bot.send_message(message.chat.id, "Ø£Ø¯Ø®Ù„ Ù…Ø¹Ø±Ù Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø§Ù„Ø°ÙŠ ØªØ±ÙŠØ¯ Ø¥Ù„ØºØ§Ø¡ Ø­Ø¸Ø±Ù‡:")
+    msg = bot.send_message(message.chat.id, "أدخل معرف المستخدم الذي تريد إلغاء حظره:")
     bot.register_next_step_handler(msg, process_unban_user)
 
 def process_unban_user(message):
     try:
         user_id = int(message.text)
         supabase.table("banned_users").delete().eq("user_id", user_id).execute()
-        bot.send_message(message.chat.id, f"âœ… ØªÙ… Ø¥Ù„ØºØ§Ø¡ Ø­Ø¸Ø± Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… {user_id}. ÙŠÙ…ÙƒÙ†Ù‡ Ø§Ù„Ø¢Ù† Ø§Ø³ØªØ®Ø¯Ø§Ù… Ø§Ù„Ø¨ÙˆØª.")
+        bot.send_message(message.chat.id, f"✅ تم إلغاء حظر المستخدم {user_id}. يمكنه الآن استخدام البوت.")
     except ValueError:
-        bot.send_message(message.chat.id, "âŒ ÙŠØ±Ø¬Ù‰ Ø¥Ø¯Ø®Ø§Ù„ Ù…Ø¹Ø±Ù Ù…Ø³ØªØ®Ø¯Ù… ØµØ­ÙŠØ­.")
+        bot.send_message(message.chat.id, "❌ يرجى إدخال معرف مستخدم صحيح.")
     except Exception as e:
-        bot.send_message(message.chat.id, "âŒ Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ø¥Ù„ØºØ§Ø¡ Ø­Ø¸Ø± Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù….")
+        bot.send_message(message.chat.id, "❌ حدث خطأ أثناء إلغاء حظر المستخدم.")
         logger.error(f"Error unbanning user: {e}")
 
 @bot.message_handler(commands=['get_banned_users'])
 def get_banned_users(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "Ù‡Ø°Ø§ Ø§Ù„Ø£Ù…Ø± Ù…Ø®ØµØµ Ù„Ù„Ø£Ø§Ø¯Ù…Ù† ÙÙ‚Ø·!")
+        bot.send_message(message.chat.id, "هذا الأمر مخصص للأادمن فقط!")
         return
     try:
         res = supabase.table("banned_users").select("user_id").execute()
         banned_users = res.data or []
         if banned_users:
-            banned_users_list = "\n".join([f"Ù…Ø¹Ø±Ù Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…: {d.get('user_id')}" for d in banned_users])
-            bot.send_message(message.chat.id, f"Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† Ø§Ù„Ù…Ø­Ø¸ÙˆØ±ÙŠÙ†:\n{banned_users_list}")
+            banned_users_list = "\n".join([f"معرف المستخدم: {d.get('user_id')}" for d in banned_users])
+            bot.send_message(message.chat.id, f"قائمة المستخدمين المحظورين:\n{banned_users_list}")
         else:
-            bot.send_message(message.chat.id, "Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† Ù…Ø­Ø¸ÙˆØ±ÙŠÙ† Ø­ØªÙ‰ Ø§Ù„Ø¢Ù†.")
+            bot.send_message(message.chat.id, "لا يوجد مستخدمين محظورين حتى الآن.")
         logging.basicConfig(level=logging.DEBUG)
         logger = logging.getLogger(__name__)
     except Exception as e:
         logger.error(f"Error getting banned users: {e}")
-        bot.send_message(message.chat.id, "Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ø§Ø³ØªØ±Ø¬Ø§Ø¹ Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ù…Ø­Ø¸ÙˆØ±ÙŠÙ†.")
+        bot.send_message(message.chat.id, "حدث خطأ أثناء استرجاع قائمة المحظورين.")
 
 # ------------------ Entry point ------------------
 if __name__ == '__main__':
