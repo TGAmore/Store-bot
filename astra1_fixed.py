@@ -799,25 +799,31 @@ def handle_query(call):
         types.InlineKeyboardButton("💰 سوري", callback_data='sham_syrian')
     )
     keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
+
     bot.edit_message_text(
         chat_id=user_id,
         message_id=call.message.message_id,
         text="👇 اختر عملة التحويل 🌐 المناسبة 👇:",
         reply_markup=keyboard
     )
-        elif call.data == 'sham_dollar':
-            network = "Sham Cash Dollar"
-            keyboard = types.InlineKeyboardMarkup()
-            keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                              text=f"✅ تم اختيار {network} 🌐.\n\n"
-                                    "📥 عنوان الايداع:\n"
-                                    f"{get_setting('shamcash_code')}\n"
-                                    "⚠️ الحد الادنى للايداع 1💲.\n"
-                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n\n"
-                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
-                                  reply_markup=keyboard)
-            bot.register_next_step_handler(call.message, handle_deposit, network)
+            elif call.data == 'sham_dollar':
+    network = "Sham Cash Dollar"
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
+
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text=f"✅ تم اختيار {network} 🌐.\n\n"
+             "📥 عنوان الايداع:\n"
+             f"{get_setting('shamcash_code')}\n"
+             "⚠️ الحد الادنى للايداع 1💲.\n"
+             "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n\n"
+             "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
+        reply_markup=keyboard
+    )
+
+    bot.register_next_step_handler(call.message, handle_deposit, network)
         elif call.data == 'sham_syrian':
             network = "Sham Cash Syrian"
             keyboard = types.InlineKeyboardMarkup()
