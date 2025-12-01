@@ -754,8 +754,8 @@ def handle_query(call):
             keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
             bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
                                   text="👇 اختر شبكة الايداع 🌐 المناسبة 👇:", reply_markup=keyboard)
-        elif call.data == 'network_tron' or call.data == 'network_ethereum':
-            network = "TRON" if call.data == 'network_tron' else "Ethereum"
+        elif call.data == 'network_tron':
+            network = "TRON"
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
@@ -763,7 +763,26 @@ def handle_query(call):
                                     "\n"
                                     "📥 عنوان الايداع:\n"
                                     "\n"
-                                    "TRGQMLpJru9ReRts5UjySEYFaguRccnmFd\n"
+                                    f"{get_setting('tron_address')}\n"
+                                    "\n"
+                                    "⚠️ الحد الادنى للايداع 10💲.\n"
+                                    "\n"
+                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
+                                    "\n"
+                                    "\n"
+                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
+                                  reply_markup=keyboard)
+            bot.register_next_step_handler(call.message, handle_deposit, network)
+        elif call.data == 'network_ethereum':
+            network = "Ethereum"
+            keyboard = types.InlineKeyboardMarkup()
+            keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                              text=f"✅ تم اختيار شبكة {network} 🌐.\n"
+                                    "\n"
+                                    "📥 عنوان الايداع:\n"
+                                    "\n"
+                                    f"{get_setting('eth_address')}\n"
                                     "\n"
                                     "⚠️ الحد الادنى للايداع 10💲.\n"
                                     "\n"
@@ -780,7 +799,7 @@ def handle_query(call):
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                               text=f"✅ تم اختيار {network} 🌐.\n\n"
                                     "📥 عنوان الايداع:\n"
-                                    "c1b8a366098c659729dd80d83bd498c4\n\n"
+                                    f"{get_setting('shamcash_code')}\n"
                                     "⚠️ الحد الادنى للايداع 1💲.\n"
                                     "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n\n"
                                     "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
@@ -796,7 +815,7 @@ def handle_query(call):
                                     "\n"
                                     "📥 رقم التحويل اليدوي:\n"
                                     "\n"
-                                    "0998028586\n"
+                                    f"{get_setting('syriatel_number')}\n"
                                     "\n"
                                     "⚠️ الحد الادنى للايداع 5000 ل.س.\n"
                                     "\n"
