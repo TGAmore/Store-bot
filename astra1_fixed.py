@@ -294,9 +294,9 @@ def process_quantity(message, offer_index, user_id):
         bot.send_message(
             message.chat.id,
             f"✅ تمت عملية الشراء بنجاح!"
-💵 تم خصم {total_price} من رصيدك.
-📦 الكمية: {quantity}
-سيتم التواصل معك من الإدارة.",
+            f"💵 تم خصم {total_price} من رصيدك."
+            f"📦 الكمية: {quantity}"
+            f"سيتم التواصل معك من الإدارة.",
             reply_markup=markup
         )
 
