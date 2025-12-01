@@ -549,11 +549,8 @@ def cancel_order(message, user_id):
         amount_to_refund = transaction.get("amount", 0)
         update_balance(user_id, amount_to_refund)
 
-        bot.send_message(user_id, f"❎ تم إلغاء طلبك.
-📌 السبب: {reason}
-💰 تم إرجاع {amount_to_refund} USD لرصيدك.")
-        bot.send_message(message.chat.id, f"✔️ تم الإلغاء.
-💵 تم إرجاع {amount_to_refund} USD للمستخدم.")
+        bot.send_message(user_id, f"❎ تم إلغاء طلبك.📌 السبب: {reason}💰 تم إرجاع {amount_to_refund} USD لرصيدك.")
+        bot.send_message(message.chat.id, f"✔️ تم الإلغاء.💵 تم إرجاع {amount_to_refund} USD للمستخدم.")
     else:
         bot.send_message(message.chat.id, "⚠️ لا توجد معاملة لإلغائها.")
 
