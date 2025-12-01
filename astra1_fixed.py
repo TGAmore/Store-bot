@@ -686,9 +686,7 @@ def usdt_address(call):
     markup.add(InlineKeyboardButton("🔙 رجوع", callback_data="usdt"))
 
     bot.edit_message_text(
-        f"💰 إيداع USDT عبر شبكة {network}:
-🏦 العنوان:
-`{address}`",
+        f"💰 إيداع USDT عبر شبكة {network}:🏦 العنوان:`{address}`",
         call.message.chat.id,
         call.message.message_id,
         parse_mode="Markdown",
@@ -761,9 +759,7 @@ def show_cash_payment_details(call):
     markup.add(InlineKeyboardButton("🔙 رجوع", callback_data="recharge_balance"))
 
     bot.edit_message_text(
-        f"💳 الإيداع عبر: {network_name}
-📱 الرقم:
-`{number}`",
+        f"💳 الإيداع عبر: {network_name}📱 الرقم:`{number}`",
         call.message.chat.id,
         call.message.message_id,
         parse_mode="Markdown",
