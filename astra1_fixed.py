@@ -709,7 +709,6 @@ def handle_query(call):
             keyboard = types.InlineKeyboardMarkup(row_width=1)
             keyboard.add(
                 types.InlineKeyboardButton("💵 USDT", callback_data='usdt'),
-                types.InlineKeyboardButton("💰 Payeer", callback_data='payeer'),
                 types.InlineKeyboardButton("💰 Syriatel Cash", callback_data='syriatelcash'),
                 types.InlineKeyboardButton("💰 Sham Cash", callback_data='shamcash'),
             )
@@ -733,56 +732,58 @@ def handle_query(call):
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                  text=f"✅ تم اختيار شبكة {network} 🌐."
-                                  
-                                        "📥 عنوان الايداع:"
-                                        
-                                        "TRGQMLpJru9ReRts5UjySEYFaguRccnmFd"
-                                        
-                                        "⚠️ الحد الادنى للايداع 10💲."
-                                        
-                                        "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى"
-                                        
-                                        
-                                        "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
+                              text=f"✅ تم اختيار شبكة {network} 🌐.\n"
+                                    "\n"
+                                    "📥 عنوان الايداع:\n"
+                                    "\n"
+                                    "TRGQMLpJru9ReRts5UjySEYFaguRccnmFd\n"
+                                    "\n"
+                                    "⚠️ الحد الادنى للايداع 10💲.\n"
+                                    "\n"
+                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
+                                    "\n"
+                                    "\n"
+                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
-        elif call.data == 'payeer':
-            keyboard = types.InlineKeyboardMarkup()
-            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
-            bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
-                                  text=(
-                                      "💰 الدفع عبر Payeer"
-                                      "📥 حساب Payeer:"
-                                      "P123456789"
-                                      "⚠️ الحد الأدنى للإيداع: 5$"
-                                      "✏️ أرسل قيمة الإيداع (بالأرقام):"
-                                  ), reply_markup=keyboard)
-            bot.register_next_step_handler(call.message, handle_deposit_payeer)
-        elif call.data == 'syriatelcash':
-            keyboard = types.InlineKeyboardMarkup()
-            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
-            bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
-                                  text=(
-                                      "📱 الدفع عبر Syriatel Cash"
-                                      "📥 رقم الدفع:"
-                                      "+963 988 000 000"
-                                      "⚠️ الحد الأدنى للإيداع: 10000 SYP"
-                                      "✏️ أرسل قيمة الإيداع (بالأرقام):"
-                                  ), reply_markup=keyboard)
-            bot.register_next_step_handler(call.message, handle_deposit_syriatel)
         elif call.data == 'shamcash':
+        network = "Sham Cash"
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
-            bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
-                                  text=(
-                                      "📱 الدفع عبر Sham Cash"
-                                      "📥 رقم الدفع:"
-                                      "+963 999 000 000"
-                                      "⚠️ الحد الأدنى للإيداع: 10000 SYP"
-                                      "✏️ أرسل قيمة الإيداع (بالأرقام):"
-                                  ), reply_markup=keyboard)
-            bot.register_next_step_handler(call.message, handle_deposit_sham)
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                               text=f"✅ تم اختيار {network} 🌐.\n"
+                                    "\n"
+                                    "📥 عنوان الايداع:\n"
+                                    "\n"
+                                    "c1b8a366098c659729dd80d83bd498c4\n"
+                                    "\n"
+                                    "⚠️ الحد الادنى للايداع 1💲.\n"
+                                    "\n"
+                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
+                                    "\n"
+                                    "\n"
+                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
+                                  reply_markup=keyboard)
+            bot.register_next_step_handler(call.message, handle_deposit, network)
+        elif call.data == 'syriatelcash':
+        network = "Syriatel Cash"
+            keyboard = types.InlineKeyboardMarkup()
+            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                               text=f"✅ تم اختيار {network} 🌐.\n"
+                                    "\n"
+                                    "📥 رقم التحويل اليدوي:\n"
+                                    "\n"
+                                    "0998028586\n"
+                                    "\n"
+                                    "⚠️ الحد الادنى للايداع 5000 ل.س.\n"
+                                    "\n"
+                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
+                                    "\n"
+                                    "\n"
+                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
+                                  reply_markup=keyboard)
+            bot.register_next_step_handler(call.message, handle_deposit, network)
         elif call.data == 'cancel':
             bot.edit_message_text(
                 chat_id=call.message.chat.id,
