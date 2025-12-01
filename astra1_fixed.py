@@ -749,7 +749,7 @@ def handle_query(call):
         elif call.data == 'shamcash':
             network = "Sham Cash"
             keyboard = types.InlineKeyboardMarkup()
-            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
+            keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                               text=f"✅ تم اختيار {network} 🌐.\n\n"
                                     "📥 عنوان الايداع:\n"
@@ -763,7 +763,7 @@ def handle_query(call):
         elif call.data == 'syriatelcash':
             network = "Syriatel Cash"
             keyboard = types.InlineKeyboardMarkup()
-            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
+            keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                text=f"✅ تم اختيار {network} 🌐.\n"
                                     "\n"
