@@ -793,7 +793,16 @@ def handle_query(call):
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
         elif call.data == 'shamcash':
-            network = "Sham Cash"
+        keyboard = types.InlineKeyboardMarkup(row_width=1)
+            keyboard.add(
+                types.InlineKeyboardButton("💵 دولار", callback_data='sham_dollar'),
+                types.InlineKeyboardButton("💰 سوري", callback_data='sham_syrian')
+            )
+            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
+            bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
+                                  text="👇 اختر عملة التحويل 🌐 المناسبة 👇:", reply_markup=keyboard)
+        elif call.data == 'sham_dollar':
+            network = "Sham Cash Dollar"
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
@@ -805,7 +814,25 @@ def handle_query(call):
                                     "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
-
+        elif call.data == 'sham_syrian':
+            network = "Sham Cash Syrian"
+            keyboard = types.InlineKeyboardMarkup()
+            keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                               text=f"✅ تم اختيار {network} 🌐.\n"
+                                    "\n"
+                                    "📥 رقم التحويل اليدوي:\n"
+                                    "\n"
+                                    f"{get_setting('shamcash_code')}\n"
+                                    "\n"
+                                    "⚠️ الحد الادنى للايداع 5000 ل.س.\n"
+                                    "\n"
+                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
+                                    "\n"
+                                    "\n"
+                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
+                                  reply_markup=keyboard)
+            bot.register_next_step_handler(call.message, handle_deposit, network)
         elif call.data == 'syriatelcash':
             network = "Syriatel Cash"
             keyboard = types.InlineKeyboardMarkup()
@@ -871,7 +898,7 @@ def handle_query(call):
 def handle_deposit(message, network):
     try:
         # If deposit via Syriatel Cash or Sham Cash: user inputs amount in Syrian Lira (SYP)
-        if network in ["Syriatel Cash", "Sham Cash", "Sham Cash "]:
+        if network in ["Syriatel Cash", "Sham Cash Syrian", "Sham Cash Syrian "]:
             # get usd rate from settings (stored as string)
             try:
                 usd_rate = float(get_setting("usd_rate") or 0)
@@ -879,7 +906,7 @@ def handle_deposit(message, network):
                 usd_rate = 0
             if not usd_rate or usd_rate <= 0:
                 # fallback default if setting missing
-                usd_rate = 15000.0
+                usd_rate = 12000.0
 
             try:
                 amount_syp = float(message.text)
@@ -1065,8 +1092,11 @@ def edit_address_start(call):
     method = call.data.replace("editaddr_", "")  # tron / eth / syriatel / sham
 
     msg = bot.send_message(call.message.chat.id, f"✏️ أدخل العنوان الجديد لـ {method}:")
-
+    
+    bot.clear_step_handler(call.message)  # مهم لمنع التعارض
     bot.register_next_step_handler(msg, save_new_address, method)
+
+
 
 def save_new_address(message, method):
     new_value = message.text.strip()
