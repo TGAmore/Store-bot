@@ -733,28 +733,17 @@ def handle_query(call):
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                  text=f"✅ تم اختيار شبكة {network} 🌐.
-"
-                                        "
-"
-                                        "📥 عنوان الايداع:
-"
-                                        "
-"
-                                        "TRGQMLpJru9ReRts5UjySEYFaguRccnmFd
-"
-                                        "
-"
-                                        "⚠️ الحد الادنى للايداع 10💲.
-"
-                                        "
-"
-                                        "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى
-"
-                                        "
-"
-                                        "
-"
+                                  text=f"✅ تم اختيار شبكة {network} 🌐."
+                                  
+                                        "📥 عنوان الايداع:"
+                                        
+                                        "TRGQMLpJru9ReRts5UjySEYFaguRccnmFd"
+                                        
+                                        "⚠️ الحد الادنى للايداع 10💲."
+                                        
+                                        "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى"
+                                        
+                                        
                                         "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
@@ -763,17 +752,10 @@ def handle_query(call):
             keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
             bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
                                   text=(
-                                      "💰 الدفع عبر Payeer
-
-"
-                                      "📥 حساب Payeer:
-"
-                                      "P123456789
-
-"
-                                      "⚠️ الحد الأدنى للإيداع: 5$
-
-"
+                                      "💰 الدفع عبر Payeer"
+                                      "📥 حساب Payeer:"
+                                      "P123456789"
+                                      "⚠️ الحد الأدنى للإيداع: 5$"
                                       "✏️ أرسل قيمة الإيداع (بالأرقام):"
                                   ), reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit_payeer)
@@ -782,17 +764,10 @@ def handle_query(call):
             keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
             bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
                                   text=(
-                                      "📱 الدفع عبر Syriatel Cash
-
-"
-                                      "📥 رقم الدفع:
-"
-                                      "+963 988 000 000
-
-"
-                                      "⚠️ الحد الأدنى للإيداع: 10000 SYP
-
-"
+                                      "📱 الدفع عبر Syriatel Cash"
+                                      "📥 رقم الدفع:"
+                                      "+963 988 000 000"
+                                      "⚠️ الحد الأدنى للإيداع: 10000 SYP"
                                       "✏️ أرسل قيمة الإيداع (بالأرقام):"
                                   ), reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit_syriatel)
@@ -801,17 +776,10 @@ def handle_query(call):
             keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
             bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
                                   text=(
-                                      "📱 الدفع عبر Sham Cash
-
-"
-                                      "📥 رقم الدفع:
-"
-                                      "+963 999 000 000
-
-"
-                                      "⚠️ الحد الأدنى للإيداع: 10000 SYP
-
-"
+                                      "📱 الدفع عبر Sham Cash"
+                                      "📥 رقم الدفع:"
+                                      "+963 999 000 000"
+                                      "⚠️ الحد الأدنى للإيداع: 10000 SYP"
                                       "✏️ أرسل قيمة الإيداع (بالأرقام):"
                                   ), reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit_sham)
