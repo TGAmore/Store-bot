@@ -792,7 +792,7 @@ def handle_query(call):
                                     "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
-        elif call.data == 'shamcash':
+@bot.callback_query_handler(func=lambda call: call.data == "shamcash")
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     keyboard.add(
         types.InlineKeyboardButton("💵 دولار", callback_data='sham_dollar'),
@@ -806,7 +806,7 @@ def handle_query(call):
         text="👇 اختر عملة التحويل 🌐 المناسبة 👇:",
         reply_markup=keyboard
     )
-            elif call.data == 'sham_dollar':
+@bot.callback_query_handler(func=lambda call: call.data == "sham_dollar")
     network = "Sham Cash Dollar"
     keyboard = types.InlineKeyboardMarkup()
     keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
@@ -824,7 +824,7 @@ def handle_query(call):
     )
 
     bot.register_next_step_handler(call.message, handle_deposit, network)
-        elif call.data == 'sham_syrian':
+@bot.callback_query_handler(func=lambda call: call.data == "sham_syrian")
             network = "Sham Cash Syrian"
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
@@ -843,7 +843,7 @@ def handle_query(call):
                                     "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
-        elif call.data == 'syriatelcash':
+@bot.callback_query_handler(func=lambda call: call.data == "shamcash")
             network = "Syriatel Cash"
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
