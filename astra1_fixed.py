@@ -792,6 +792,9 @@ def handle_query(call):
                                     "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
+    except Exception as e:
+        logger.error(f"Error in handle_query: {e}")
+        
 @bot.callback_query_handler(func=lambda call: call.data == "shamcash")
 def shamcash_handler(call):
     user_id = call.message.chat.id
