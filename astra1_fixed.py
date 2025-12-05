@@ -716,7 +716,9 @@ def handle_query(call):
     if is_user_banned(call.from_user.id):
         bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
         return
+
     user_id = call.message.chat.id
+
     try:
         if call.data == 'account_info':
             username = call.message.chat.username or "غير متوفر"
@@ -732,6 +734,7 @@ def handle_query(call):
             back_button.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   text=account_info, reply_markup=back_button)
+
         elif call.data == 'recharge_balance':
             keyboard = types.InlineKeyboardMarkup(row_width=1)
             keyboard.add(
@@ -740,61 +743,69 @@ def handle_query(call):
                 types.InlineKeyboardButton("💰 Sham Cash", callback_data='shamcash'),
             )
             keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
-            bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
-                                  text="💳 اختر وسيلة الدفع التي ترغب في استخدامها لشحن رصيدك 👇:", reply_markup=keyboard)
+            bot.edit_message_text(
+                chat_id=user_id,
+                message_id=call.message.message_id,
+                text="💳 اختر وسيلة الدفع التي ترغب في استخدامها لشحن رصيدك 👇:",
+                reply_markup=keyboard
+            )
+
         elif call.data == 'usdt':
-            if is_user_banned(call.from_user.id):
-                bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت بشكل دائم.", show_alert=True)
-                return
             keyboard = types.InlineKeyboardMarkup(row_width=1)
             keyboard.add(
                 types.InlineKeyboardButton("💵 شبكة TRON", callback_data='network_tron'),
                 types.InlineKeyboardButton("💰 شبكة Ethereum", callback_data='network_ethereum')
             )
             keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
-            bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
-                                  text="👇 اختر شبكة الايداع 🌐 المناسبة 👇:", reply_markup=keyboard)
+            bot.edit_message_text(
+                chat_id=user_id,
+                message_id=call.message.message_id,
+                text="👇 اختر شبكة الايداع 🌐 المناسبة 👇:",
+                reply_markup=keyboard
+            )
+
         elif call.data == 'network_tron':
             network = "TRON"
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                              text=f"✅ تم اختيار شبكة {network} 🌐.\n"
-                                    "\n"
-                                    "📥 عنوان الايداع:\n"
-                                    "\n"
-                                    f"{get_setting('tron_address')}\n"
-                                    "\n"
-                                    "⚠️ الحد الادنى للايداع 10💲.\n"
-                                    "\n"
-                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
-                                    "\n"
-                                    "\n"
-                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
-                                  reply_markup=keyboard)
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=f"✅ تم اختيار شبكة {network} 🌐.\n\n"
+                     "📥 عنوان الايداع:\n"
+                     f"{get_setting('tron_address')}\n\n"
+                     "⚠️ الحد الادنى للايداع 10💲.\n"
+                     "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n\n"
+                     "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
+                reply_markup=keyboard
+            )
             bot.register_next_step_handler(call.message, handle_deposit, network)
+
         elif call.data == 'network_ethereum':
             network = "Ethereum"
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                              text=f"✅ تم اختيار شبكة {network} 🌐.\n"
-                                    "\n"
-                                    "📥 عنوان الايداع:\n"
-                                    "\n"
-                                    f"{get_setting('eth_address')}\n"
-                                    "\n"
-                                    "⚠️ الحد الادنى للايداع 10💲.\n"
-                                    "\n"
-                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
-                                    "\n"
-                                    "\n"
-                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
-                                  reply_markup=keyboard)
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=f"✅ تم اختيار شبكة {network} 🌐.\n\n"
+                     "📥 عنوان الايداع:\n"
+                     f"{get_setting('eth_address')}\n\n"
+                     "⚠️ الحد الادنى للايداع 10💲.\n"
+                     "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n\n"
+                     "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
+                reply_markup=keyboard
+            )
             bot.register_next_step_handler(call.message, handle_deposit, network)
+
     except Exception as e:
-        logger.error(f"Error in handle_query: {e}")
-        
+        print(f"Error in handle_query: {e}")
+
+
+# ---------------------------------------------
+#      هذا القسم خارج handle_query بالكامل
+# ---------------------------------------------
+
 @bot.callback_query_handler(func=lambda call: call.data == "shamcash")
 def shamcash_handler(call):
     user_id = call.message.chat.id
@@ -811,6 +822,7 @@ def shamcash_handler(call):
         text="👇 اختر عملة التحويل 🌐 المناسبة 👇:",
         reply_markup=keyboard
     )
+
 
 @bot.callback_query_handler(func=lambda call: call.data == "sham_dollar")
 def sham_dollar_handler(call):
@@ -832,7 +844,8 @@ def sham_dollar_handler(call):
 
     bot.register_next_step_handler(call.message, handle_deposit, network)
 
- @bot.callback_query_handler(func=lambda call: call.data == "sham_syrian")
+
+@bot.callback_query_handler(func=lambda call: call.data == "sham_syrian")
 def sham_syrian_handler(call):
     network = "Sham Cash Syrian"
     keyboard = types.InlineKeyboardMarkup()
@@ -851,6 +864,7 @@ def sham_syrian_handler(call):
     )
 
     bot.register_next_step_handler(call.message, handle_deposit, network)
+
 
 @bot.callback_query_handler(func=lambda call: call.data == "syriatelcash")
 def syriatel_handler(call):
