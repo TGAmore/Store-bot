@@ -793,6 +793,8 @@ def handle_query(call):
                                   reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
 @bot.callback_query_handler(func=lambda call: call.data == "shamcash")
+def shamcash_handler(call):
+    user_id = call.message.chat.id
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     keyboard.add(
         types.InlineKeyboardButton("💵 دولار", callback_data='sham_dollar'),
@@ -806,7 +808,9 @@ def handle_query(call):
         text="👇 اختر عملة التحويل 🌐 المناسبة 👇:",
         reply_markup=keyboard
     )
+
 @bot.callback_query_handler(func=lambda call: call.data == "sham_dollar")
+def sham_dollar_handler(call):
     network = "Sham Cash Dollar"
     keyboard = types.InlineKeyboardMarkup()
     keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
@@ -824,44 +828,47 @@ def handle_query(call):
     )
 
     bot.register_next_step_handler(call.message, handle_deposit, network)
-@bot.callback_query_handler(func=lambda call: call.data == "sham_syrian")
-            network = "Sham Cash Syrian"
-            keyboard = types.InlineKeyboardMarkup()
-            keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                               text=f"✅ تم اختيار {network} 🌐.\n"
-                                    "\n"
-                                    "📥 رقم التحويل اليدوي:\n"
-                                    "\n"
-                                    f"{get_setting('shamcash_code')}\n"
-                                    "\n"
-                                    "⚠️ الحد الادنى للايداع 5000 ل.س.\n"
-                                    "\n"
-                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
-                                    "\n"
-                                    "\n"
-                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
-                                  reply_markup=keyboard)
-            bot.register_next_step_handler(call.message, handle_deposit, network)
-@bot.callback_query_handler(func=lambda call: call.data == "shamcash")
-            network = "Syriatel Cash"
-            keyboard = types.InlineKeyboardMarkup()
-            keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                               text=f"✅ تم اختيار {network} 🌐.\n"
-                                    "\n"
-                                    "📥 رقم التحويل اليدوي:\n"
-                                    "\n"
-                                    f"{get_setting('syriatel_number')}\n"
-                                    "\n"
-                                    "⚠️ الحد الادنى للايداع 5000 ل.س.\n"
-                                    "\n"
-                                    "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n"
-                                    "\n"
-                                    "\n"
-                                    "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
-                                  reply_markup=keyboard)
-            bot.register_next_step_handler(call.message, handle_deposit, network)
+
+ @bot.callback_query_handler(func=lambda call: call.data == "sham_syrian")
+def sham_syrian_handler(call):
+    network = "Sham Cash Syrian"
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
+
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text=f"✅ تم اختيار {network} 🌐.\n\n"
+             "📥 رقم التحويل اليدوي:\n"
+             f"{get_setting('shamcash_code')}\n\n"
+             "⚠️ الحد الادنى للايداع 5000 ل.س.\n"
+             "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n\n"
+             "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
+        reply_markup=keyboard
+    )
+
+    bot.register_next_step_handler(call.message, handle_deposit, network)
+
+@bot.callback_query_handler(func=lambda call: call.data == "syriatelcash")
+def syriatel_handler(call):
+    network = "Syriatel Cash"
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
+
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text=f"✅ تم اختيار {network} 🌐.\n\n"
+             "📥 رقم التحويل اليدوي:\n"
+             f"{get_setting('syriatel_number')}\n\n"
+             "⚠️ الحد الادنى للايداع 5000 ل.س.\n"
+             "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n\n"
+             "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
+        reply_markup=keyboard
+    )
+
+    bot.register_next_step_handler(call.message, handle_deposit, network)
+
         elif call.data == 'cancel':
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                 text="✅ تم إلغاء العملية.",
