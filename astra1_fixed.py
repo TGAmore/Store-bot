@@ -886,14 +886,15 @@ def syriatel_handler(call):
 
     bot.register_next_step_handler(call.message, handle_deposit, network)
 
-        elif call.data == 'cancel':
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                text="✅ تم إلغاء العملية.",
-                reply_markup=types.InlineKeyboardMarkup().add(
-                    types.InlineKeyboardButton("🔙 رجوع إلى الواجهة الرئيسية", callback_data='main_menu')
-                )
+    elif call.data == 'cancel':  # تم تعديل التنسيق هنا
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+            text="✅ تم إلغاء العملية.",
+            reply_markup=types.InlineKeyboardMarkup().add(
+                types.InlineKeyboardButton("🔙 رجوع إلى الواجهة الرئيسية", callback_data='main_menu')
             )
-            bot.clear_step_handler(call.message)
+        )
+        bot.clear_step_handler(call.message)
+
         elif call.data.startswith('accept_'):
             request_id = int(call.data.split('_')[1])
             try:
