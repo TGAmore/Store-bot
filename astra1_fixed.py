@@ -806,84 +806,59 @@ def handle_query(call):
 #      هذا القسم خارج handle_query بالكامل
 # ---------------------------------------------
 
-@bot.callback_query_handler(func=lambda call: call.data == "shamcash")
-def shamcash_handler(call):
-    user_id = call.message.chat.id
-    keyboard = types.InlineKeyboardMarkup(row_width=1)
-    keyboard.add(
-        types.InlineKeyboardButton("💵 دولار", callback_data='sham_dollar'),
-        types.InlineKeyboardButton("💰 سوري", callback_data='sham_syrian')
-    )
-    keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
+# --- معالج أزرار الدفع (Syriatel & Sham Cash) ---
+@bot.callback_query_handler(func=lambda call: call.data in ["syriatelcash", "shamcash"])
+def payment_methods_handler(call):
+    # تحديد الشبكة بناءً على الزر المضغوط
+    if call.data == "syriatelcash":
+        network = "Syriatel Cash"
+        setting_key = "syriatel_number"
+    else:
+        network = "Sham Cash"
+        setting_key = "sham_number"
 
-    bot.edit_message_text(
-        chat_id=user_id,
-        message_id=call.message.message_id,
-        text="👇 اختر عملة التحويل 🌐 المناسبة 👇:",
-        reply_markup=keyboard
-    )
+    # جلب الرقم من قاعدة البيانات
+    payment_number = get_setting(setting_key)
+    if not payment_number:
+        payment_number = "لم يتم تحديد رقم بعد"
 
-
-@bot.callback_query_handler(func=lambda call: call.data == "sham_dollar")
-def sham_dollar_handler(call):
-    network = "Sham Cash Dollar"
     keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
+    keyboard.add(types.InlineKeyboardButton("❌ إلغاء العملية", callback_data='cancel'))
 
+    text_msg = (
+        f"✅ تم اختيار **{network}** 🌐\n\n"
+        f"📥 رقم التحويل اليدوي:\n"
+        f" `{payment_number}` \n\n"
+        f"⚠️ الحد الأدنى للإيداع 5000 ل.س.\n"
+        f"⚠️ يرجى عدم إرسال مبلغ أقل من الحد الأدنى.\n\n"
+        f"✏️ يرجى إدخال قيمة الإيداع (بالأرقام فقط) 🔢:"
+    )
+
+    try:
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=text_msg,
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+        # الانتقال لخطوة استلام المبلغ
+        bot.register_next_step_handler(call.message, handle_deposit, network)
+    except Exception as e:
+        logger.error(f"Error in payment handler: {e}")
+
+# --- معالج زر الإلغاء العام ---
+@bot.callback_query_handler(func=lambda call: call.data == 'cancel')
+def cancel_handler(call):
+    bot.clear_step_handler_by_chat_id(chat_id=call.message.chat.id)
     bot.edit_message_text(
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
-        text=f"✅ تم اختيار {network} 🌐.\n\n"
-             "📥 عنوان الايداع:\n"
-             f"{get_setting('shamcash_code')}\n"
-             "⚠️ الحد الادنى للايداع 1💲.\n"
-             "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n\n"
-             "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
-        reply_markup=keyboard
+        text="❌ تم إلغاء العملية بنجاح.",
+        reply_markup=types.InlineKeyboardMarkup().add(
+            types.InlineKeyboardButton("🔙 العودة للقائمة", callback_data='main_menu')
+        )
     )
-
-    bot.register_next_step_handler(call.message, handle_deposit, network)
-
-
-@bot.callback_query_handler(func=lambda call: call.data == "sham_syrian")
-def sham_syrian_handler(call):
-    network = "Sham Cash Syrian"
-    keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
-
-    bot.edit_message_text(
-        chat_id=call.message.chat.id,
-        message_id=call.message.message_id,
-        text=f"✅ تم اختيار {network} 🌐.\n\n"
-             "📥 رقم التحويل اليدوي:\n"
-             f"{get_setting('shamcash_code')}\n\n"
-             "⚠️ الحد الادنى للايداع 5000 ل.س.\n"
-             "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n\n"
-             "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
-        reply_markup=keyboard
-    )
-
-    bot.register_next_step_handler(call.message, handle_deposit, network)
-
-
-@bot.callback_query_handler(func=lambda call: call.data == "syriatelcash")
-def syriatel_handler(call):
-    network = "Syriatel Cash"
-    keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
-
-    bot.edit_message_text(
-        chat_id=call.message.chat.id,
-        message_id=call.message.message_id,
-        text=f"✅ تم اختيار {network} 🌐.\n\n"
-             "📥 رقم التحويل اليدوي:\n"
-             f"{get_setting('syriatel_number')}\n\n"
-             "⚠️ الحد الادنى للايداع 5000 ل.س.\n"
-             "⚠️ يرجى عدم الايداع قيمة أقل من الحد الادنى\n\n"
-             "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
-        reply_markup=keyboard
-    )
-    bot.register_next_step_handler(call.message, handle_deposit, network)
 
 # --- تم فصل هذا الجزء ليكون معالجاً مستقلاً للإلغاء والقبول والرفض ---
 
