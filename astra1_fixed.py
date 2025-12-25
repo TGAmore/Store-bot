@@ -820,45 +820,89 @@ def payment_methods_handler(call):
     # جلب الرقم من قاعدة البيانات
     payment_number = get_setting(setting_key)
     if not payment_number:
-        payment_number = "لم يتم تحديد رقم بعد"
+# --- معالج موحد لجميع ضغطات الأزرار (Callback Query Handler) ---
+@bot.callback_query_handler(func=lambda call: True)
+def handle_all_callbacks(call):
+    if is_user_banned(call.from_user.id):
+        bot.answer_callback_query(call.id, "🚫 لقد تم حظرك من استخدام هذا البوت.", show_alert=True)
+        return
 
-    keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton("❌ إلغاء العملية", callback_data='cancel'))
-
-    text_msg = (
-        f"✅ تم اختيار **{network}** 🌐\n\n"
-        f"📥 رقم التحويل اليدوي:\n"
-        f" `{payment_number}` \n\n"
-        f"⚠️ الحد الأدنى للإيداع 5000 ل.س.\n"
-        f"⚠️ يرجى عدم إرسال مبلغ أقل من الحد الأدنى.\n\n"
-        f"✏️ يرجى إدخال قيمة الإيداع (بالأرقام فقط) 🔢:"
-    )
+    user_id = call.message.chat.id
+    data = call.data
 
     try:
-        bot.edit_message_text(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            text=text_msg,
-            parse_mode="Markdown",
-            reply_markup=keyboard
-        )
-        # الانتقال لخطوة استلام المبلغ
-        bot.register_next_step_handler(call.message, handle_deposit, network)
-    except Exception as e:
-        logger.error(f"Error in payment handler: {e}")
+        # 1. معلومات الحساب
+        if data == 'account_info':
+            balance = get_user_balance(user_id)
+            username = call.message.chat.username or "غير متوفر"
+            text = (f"ℹ️ معلومات الحساب:\n👤 اسم المستخدم: @{username}\n"
+                    f"🆔 معرف المستخدم: {user_id}\n💰 رصيد الحساب: {balance} USD")
+            bot.edit_message_text(text, user_id, call.message.message_id, 
+                                  reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("🔙 رجوع", callback_data='main_menu')))
 
-# --- معالج زر الإلغاء العام ---
-@bot.callback_query_handler(func=lambda call: call.data == 'cancel')
-def cancel_handler(call):
-    bot.clear_step_handler_by_chat_id(chat_id=call.message.chat.id)
-    bot.edit_message_text(
-        chat_id=call.message.chat.id,
-        message_id=call.message.message_id,
-        text="❌ تم إلغاء العملية بنجاح.",
-        reply_markup=types.InlineKeyboardMarkup().add(
-            types.InlineKeyboardButton("🔙 العودة للقائمة", callback_data='main_menu')
-        )
-    )
+        # 2. قائمة شحن الرصيد الرئيسية
+        elif data == 'recharge_balance':
+            keyboard = InlineKeyboardMarkup(row_width=1)
+            keyboard.add(
+                InlineKeyboardButton("💵 USDT", callback_data='usdt'),
+                InlineKeyboardButton("💰 Syriatel Cash", callback_data='syriatelcash'),
+                InlineKeyboardButton("💰 Sham Cash", callback_data='shamcash'),
+                InlineKeyboardButton("🔙 رجوع", callback_data='main_menu')
+            )
+            bot.edit_message_text("💳 اختر وسيلة الدفع التي ترغب في استخدامها:", user_id, call.message.message_id, reply_markup=keyboard)
+
+        # 3. معالجة Syriatel Cash
+        elif data == 'syriatelcash':
+            network = "Syriatel Cash"
+            number = get_setting('syriatel_number') or "لم يتم ضبط الرقم"
+            text = f"✅ تم اختيار {network}\n📥 الرقم: `{number}`\n⚠️ الحد الأدنى: 5000 ل.س\n✏️ أدخل قيمة الإيداع بالليرة:"
+            bot.edit_message_text(text, user_id, call.message.message_id, parse_mode="Markdown",
+                                  reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("الغاء", callback_data='cancel')))
+            bot.register_next_step_handler(call.message, handle_deposit, network)
+
+        # 4. معالجة Sham Cash
+        elif data == 'shamcash':
+            network = "Sham Cash Syrian"
+            number = get_setting('shamcash_code') or "لم يتم ضبط الرقم"
+            text = f"✅ تم اختيار {network}\n📥 الرقم/الكود: `{number}`\n⚠️ الحد الأدنى: 5000 ل.س\n✏️ أدخل قيمة الإيداع بالليرة:"
+            bot.edit_message_text(text, user_id, call.message.message_id, parse_mode="Markdown",
+                                  reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("الغاء", callback_data='cancel')))
+            bot.register_next_step_handler(call.message, handle_deposit, network)
+
+        # 5. معالجة USDT (TRON / ETH)
+        elif data == 'usdt':
+            keyboard = InlineKeyboardMarkup(row_width=1)
+            keyboard.add(InlineKeyboardButton("💵 شبكة TRON", callback_data='network_tron'),
+                         InlineKeyboardButton("💰 شبكة Ethereum", callback_data='network_ethereum'),
+                         InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
+            bot.edit_message_text("👇 اختر شبكة الايداع المناسبة:", user_id, call.message.message_id, reply_markup=keyboard)
+
+        elif data == 'network_tron':
+            network = "TRON"
+            addr = get_setting('tron_address') or "لم يتم ضبط العنوان"
+            bot.edit_message_text(f"✅ شبكة {network}\n📥 العنوان: `{addr}`\n✏️ أدخل المبلغ بـ USD:", user_id, call.message.message_id,
+                                  parse_mode="Markdown", reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("الغاء", callback_data='cancel')))
+            bot.register_next_step_handler(call.message, handle_deposit, network)
+
+        # 6. معالجة الإلغاء والقبول والرفض
+        elif data == 'cancel':
+            bot.clear_step_handler_by_chat_id(user_id)
+            bot.edit_message_text("✅ تم إلغاء العملية.", user_id, call.message.message_id,
+                                  reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("🔙 الرئيسية", callback_data='main_menu')))
+
+        elif data.startswith('accept_'):
+            req_id = int(data.split('_')[1])
+            # ... (كود القبول الموجود لديك في الملف) ...
+            process_admin_action(call, req_id, "Accepted")
+
+        elif data.startswith('reject_'):
+            req_id = int(data.split('_')[1])
+            # ... (كود الرفض الموجود لديك في الملف) ...
+            process_admin_action(call, req_id, "Rejected")
+
+    except Exception as e:
+        logger.error(f"Error in unified handler: {e}")
+
 
 # --- تم فصل هذا الجزء ليكون معالجاً مستقلاً للإلغاء والقبول والرفض ---
 
