@@ -883,52 +883,52 @@ def syriatel_handler(call):
              "✏️ يرجى إدخال قيمة الإيداع (بالأرقام) 🔢:",
         reply_markup=keyboard
     )
-
     bot.register_next_step_handler(call.message, handle_deposit, network)
 
-    elif call.data == 'cancel':  # تم تعديل التنسيق هنا
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-            text="✅ تم إلغاء العملية.",
-            reply_markup=types.InlineKeyboardMarkup().add(
-                types.InlineKeyboardButton("🔙 رجوع إلى الواجهة الرئيسية", callback_data='main_menu')
+# --- تم فصل هذا الجزء ليكون معالجاً مستقلاً للإلغاء والقبول والرفض ---
+
+@bot.callback_query_handler(func=lambda call: call.data == 'cancel' or call.data.startswith('accept_') or call.data.startswith('reject_'))
+def handle_admin_and_cancel_actions(call):
+    try:
+        if call.data == 'cancel':
+            bot.edit_message_text(
+                chat_id=call.message.chat.id, 
+                message_id=call.message.message_id,
+                text="✅ تم إلغاء العملية.",
+                reply_markup=types.InlineKeyboardMarkup().add(
+                    types.InlineKeyboardButton("🔙 رجوع إلى الواجهة الرئيسية", callback_data='main_menu')
+                )
             )
-        )
-        bot.clear_step_handler(call.message)
+            bot.clear_step_handler(call.message)
 
         elif call.data.startswith('accept_'):
             request_id = int(call.data.split('_')[1])
-            try:
-                res = supabase.table("recharge_requests").select("user_id", "deposit_amount").eq("request_id", request_id).single().execute()
-                if res.data:
-                    user_id_req = res.data.get("user_id")
-                    deposit_amount = res.data.get("deposit_amount", 0)
-                    update_balance(user_id_req, deposit_amount)
-                    update_request_status(request_id, 'Accepted')
-                    bot.send_message(user_id_req, f"✅ تم قبول الإيداع! تم إضافة {deposit_amount} USD إلى رصيدك.")
-                    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          text="✅ تمت معالجة الطلب بالموافقة.")
-                else:
-                    bot.send_message(call.message.chat.id, "⚠️ حدث خطأ: الطلب غير موجود.")
-            except Exception as e:
-                logger.error(f"Error accepting recharge request {request_id}: {e}")
-                bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء معالجة الطلب.")
+            res = supabase.table("recharge_requests").select("user_id", "deposit_amount").eq("request_id", request_id).single().execute()
+            if res.data:
+                user_id_req = res.data.get("user_id")
+                deposit_amount = res.data.get("deposit_amount", 0)
+                update_balance(user_id_req, deposit_amount)
+                update_request_status(request_id, 'Accepted')
+                bot.send_message(user_id_req, f"✅ تم قبول الإيداع! تم إضافة {deposit_amount} USD إلى رصيدك.")
+                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                      text="✅ تمت معالجة الطلب بالموافقة.")
+            else:
+                bot.send_message(call.message.chat.id, "⚠️ حدث خطأ: الطلب غير موجود.")
+
         elif call.data.startswith('reject_'):
             request_id = int(call.data.split('_')[1])
-            try:
-                res = supabase.table("recharge_requests").select("user_id").eq("request_id", request_id).single().execute()
-                if res.data:
-                    user_id_req = res.data.get("user_id")
-                    update_request_status(request_id, 'Rejected')
-                    bot.send_message(user_id_req, "❎ تم رفض الإيداع. يرجى المحاولة مرة أخرى.")
-                    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          text="❎ تمت معالجة الطلب بالرفض.")
-                else:
-                    bot.send_message(call.message.chat.id, "⚠️ حدث خطأ: الطلب غير موجود.")
-            except Exception as e:
-                logger.error(f"Error rejecting recharge request {request_id}: {e}")
-                bot.send_message(call.message.chat.id, "⚠️ حدث خطأ أثناء معالجة الطلب.")
+            res = supabase.table("recharge_requests").select("user_id").eq("request_id", request_id).single().execute()
+            if res.data:
+                user_id_req = res.data.get("user_id")
+                update_request_status(request_id, 'Rejected')
+                bot.send_message(user_id_req, "❎ تم رفض الإيداع. يرجى المحاولة مرة أخرى.")
+                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                      text="❎ تمت معالجة الطلب بالرفض.")
+            else:
+                bot.send_message(call.message.chat.id, "⚠️ حدث خطأ: الطلب غير موجود.")
+                
     except Exception as e:
-        logger.error(f"Error in handle_query: {e}")
+        logger.error(f"Error in admin/cancel handler: {e}")
 
 def handle_deposit(message, network):
     try:
