@@ -851,59 +851,70 @@ def handle_all_callbacks(call):
             )
             bot.edit_message_text("💳 اختر وسيلة الدفع التي ترغب في استخدامها:", user_id, call.message.message_id, reply_markup=keyboard)
 
-        # 3. معالجة Syriatel Cash
-        elif data == 'syriatelcash':
-            network = "Syriatel Cash"
-            number = get_setting('syriatel_number') or "لم يتم ضبط الرقم"
-            text = f"✅ تم اختيار {network}\n📥 الرقم: `{number}`\n⚠️ الحد الأدنى: 5000 ل.س\n✏️ أدخل قيمة الإيداع بالليرة:"
-            bot.edit_message_text(text, user_id, call.message.message_id, parse_mode="Markdown",
-                                  reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("الغاء", callback_data='cancel')))
-            bot.register_next_step_handler(call.message, handle_deposit, network)
+elif call.data == 'recharge_balance':
+            keyboard = types.InlineKeyboardMarkup(row_width=1)
+            keyboard.add(
+                types.InlineKeyboardButton("💵 USDT", callback_data='usdt'),
+                types.InlineKeyboardButton("💰 Syriatel Cash", callback_data='syriatelcash'),
+                types.InlineKeyboardButton("💰 Sham Cash", callback_data='shamcash'),
+            )
+            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu'))
+            bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
+                                  text="💳 اختر وسيلة الدفع التي ترغب في استخدامها لشحن رصيدك 👇:",
+                                  reply_markup=keyboard)
 
-        # 4. معالجة Sham Cash
-        elif data == 'shamcash':
-            network = "Sham Cash Syrian"
-            number = get_setting('shamcash_code') or "لم يتم ضبط الرقم"
-            text = f"✅ تم اختيار {network}\n📥 الرقم/الكود: `{number}`\n⚠️ الحد الأدنى: 5000 ل.س\n✏️ أدخل قيمة الإيداع بالليرة:"
-            bot.edit_message_text(text, user_id, call.message.message_id, parse_mode="Markdown",
-                                  reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("الغاء", callback_data='cancel')))
-            bot.register_next_step_handler(call.message, handle_deposit, network)
+        elif call.data == 'usdt':
+            keyboard = types.InlineKeyboardMarkup(row_width=1)
+            keyboard.add(
+                types.InlineKeyboardButton("💵 شبكة TRON", callback_data='network_tron'),
+                types.InlineKeyboardButton("💰 شبكة Ethereum", callback_data='network_ethereum')
+            )
+            keyboard.add(types.InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
+            bot.edit_message_text(chat_id=user_id, message_id=call.message.message_id,
+                                  text="👇 اختر شبكة الايداع 🌐 المناسبة 👇:",
+                                  reply_markup=keyboard)
 
-        # 5. معالجة USDT (TRON / ETH)
-        elif data == 'usdt':
-            keyboard = InlineKeyboardMarkup(row_width=1)
-            keyboard.add(InlineKeyboardButton("💵 شبكة TRON", callback_data='network_tron'),
-                         InlineKeyboardButton("💰 شبكة Ethereum", callback_data='network_ethereum'),
-                         InlineKeyboardButton("🔙 رجوع", callback_data='recharge_balance'))
-            bot.edit_message_text("👇 اختر شبكة الايداع المناسبة:", user_id, call.message.message_id, reply_markup=keyboard)
-
-        elif data == 'network_tron':
+        elif call.data == 'network_tron':
             network = "TRON"
-            addr = get_setting('tron_address') or "لم يتم ضبط العنوان"
-            bot.edit_message_text(f"✅ شبكة {network}\n📥 العنوان: `{addr}`\n✏️ أدخل المبلغ بـ USD:", user_id, call.message.message_id,
-                                  parse_mode="Markdown", reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("الغاء", callback_data='cancel')))
+            keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                text=f"✅ تم اختيار شبكة {network} 🌐.\n\n📥 عنوان الايداع:\n{get_setting('tron_address')}\n\n⚠️ الحد الادنى للايداع 10💲.\n✏️ يرجى إدخال قيمة الإيداع:",
+                reply_markup=keyboard)
             bot.register_next_step_handler(call.message, handle_deposit, network)
 
-        # 6. معالجة الإلغاء والقبول والرفض
-        elif data == 'cancel':
-            bot.clear_step_handler_by_chat_id(user_id)
-            bot.edit_message_text("✅ تم إلغاء العملية.", user_id, call.message.message_id,
-                                  reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("🔙 الرئيسية", callback_data='main_menu')))
+        elif call.data == 'network_ethereum':
+            network = "Ethereum"
+            keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("الغاء", callback_data='cancel'))
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                text=f"✅ تم اختيار شبكة {network} 🌐.\n\n📥 عنوان الايداع:\n{get_setting('eth_address')}\n\n⚠️ الحد الادنى للايداع 10💲.\n✏️ يرجى إدخال قيمة الإيداع:",
+                reply_markup=keyboard)
+            bot.register_next_step_handler(call.message, handle_deposit, network)
 
-        elif data.startswith('accept_'):
-            req_id = int(data.split('_')[1])
-            # ... (كود القبول الموجود لديك في الملف) ...
-            process_admin_action(call, req_id, "Accepted")
+        elif call.data == 'cancel':
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                text="✅ تم إلغاء العملية.",
+                reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🔙 رجوع", callback_data='main_menu')))
+            bot.clear_step_handler(call.message)
 
-        elif data.startswith('reject_'):
-            req_id = int(data.split('_')[1])
-            # ... (كود الرفض الموجود لديك في الملف) ...
-            process_admin_action(call, req_id, "Rejected")
+        elif call.data.startswith('accept_'):
+            request_id = int(call.data.split('_')[1])
+            res = supabase.table("recharge_requests").select("user_id", "deposit_amount").eq("request_id", request_id).single().execute()
+            if res.data:
+                update_balance(res.data.get("user_id"), res.data.get("deposit_amount", 0))
+                update_request_status(request_id, 'Accepted')
+                bot.send_message(res.data.get("user_id"), "✅ تم قبول إيداعك بنجاح!")
+                bot.edit_message_text("✅ تمت الموافقة.", call.message.chat.id, call.message.message_id)
+
+        elif call.data.startswith('reject_'):
+            request_id = int(call.data.split('_')[1])
+            res = supabase.table("recharge_requests").select("user_id").eq("request_id", request_id).single().execute()
+            if res.data:
+                update_request_status(request_id, 'Rejected')
+                bot.send_message(res.data.get("user_id"), "❎ تم رفض الإيداع.")
+                bot.edit_message_text("❎ تم الرفض.", call.message.chat.id, call.message.message_id)
 
     except Exception as e:
-        logger.error(f"Error in unified handler: {e}")
-
-
+        logger.error(f"Error in handle_query: {e}")
 # --- تم فصل هذا الجزء ليكون معالجاً مستقلاً للإلغاء والقبول والرفض ---
 
 @bot.callback_query_handler(func=lambda call: call.data == 'cancel' or call.data.startswith('accept_') or call.data.startswith('reject_'))
@@ -925,7 +936,7 @@ def handle_admin_and_cancel_actions(call):
             res = supabase.table("recharge_requests").select("user_id", "deposit_amount").eq("request_id", request_id).single().execute()
             if res.data:
                 user_id_req = res.data.get("user_id")
-                deposit_amount = res.data.get("deposit_amount", 0)
+                depo9sit_amount = res.data.get("deposit_amount", 0)
                 update_balance(user_id_req, deposit_amount)
                 update_request_status(request_id, 'Accepted')
                 bot.send_message(user_id_req, f"✅ تم قبول الإيداع! تم إضافة {deposit_amount} USD إلى رصيدك.")
